@@ -23,7 +23,7 @@ context.window.DSS_LAUNCHER='';await launchers[0].fire('click',{preventDefault()
 const idList=[...html.matchAll(/\bid="([^"]+)"/g)].map(m=>m[1]);check(new Set(idList).size===idList.length,'HTML IDs unique');
 for(const m of html.matchAll(/(?:href|src)="([^"]+)"/g)){if(!m[1].startsWith('#')&&!m[1].startsWith('https://'))assert.ok(fs.existsSync(path.join(root,m[1])),m[1]);}check(true,'local asset links resolve');
 check(!html.includes('aria-label="Main navigation"'),'crossed-out top navigation removed');
-check(html.includes('Digital Service Service 4.1.8')&&html.includes('DSS - Drive Mirror'),'requested software labels present');
+check(html.includes('Digital Signer Service 4.1.8')&&html.includes('Google drive link'),'requested software labels present');
 ids['log-files'].files=[];ids['error-notes'].value='';
 let before=created;await ids['download-error-report'].fire('click');check(created===before,'empty log report requires files or issue description');
 await ids['download-help'].fire('click');check(created.download==='Digital-Service-help.txt'&&created.clicked,'help guide downloads as text');
