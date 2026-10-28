@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-s8ilUBIfWvX7eq4TY8ehyTybiBWxOhrRDFanQAD0DBw='; style-src 'self' 'sha256-E71aL3XfLpiUtoxgce9cHIDz63ypLsmovbi874TlfFw='; img-src 'self' data:; font-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-s8ilUBIfWvX7eq4TY8ehyTybiBWxOhrRDFanQAD0DBw='; style-src 'self' 'sha256-zfUaWkmE4U6miXDuntBGANgO2wIFC7jDtuLN3qKb7bM='; img-src 'self' data:; font-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="description" content="A guided Windows toolkit for Digital Signing Service 4.1.8 and E-Office. Download tools, check isLive, and launch the PowerShell troubleshooter.">
 <title>E-Office · Digital Signing Toolkit</title>
@@ -42,6 +42,9 @@
 @keyframes click-to-test-flash{0%,100%{background:#fff7d5;color:#624400;box-shadow:0 0 0 0 #d7970000}50%{background:#ffe06c;color:#352400;box-shadow:0 0 0 3px #e6ac294d}}
 @media(prefers-reduced-motion:reduce){.live-click-label{animation:none}}
 @media(min-width:701px) and (max-width:1000px){.topbar{height:auto;min-height:74px;flex-wrap:wrap;gap:12px;padding-top:13px;padding-bottom:13px}.topbar nav{order:3;width:100%;justify-content:space-between}.nav-download-menu{right:-40px}}
+
+/* Draw attention to the yellow actions with one slow, coordinated pulse. */
+.nav-downloads>summary,.live-test{animation:yellow-action-pulse 2s ease-in-out infinite;cursor:pointer}.live-click-label{animation:none;font-weight:800}.nav-downloads>summary .pointing-hand,.live-test .pointing-hand{transform:translateX(0);transition:transform .2s ease}.nav-downloads>summary:hover .pointing-hand,.live-test:hover .pointing-hand{transform:translateX(3px)}.nav-downloads[open]>summary,.nav-downloads>summary:hover,.live-test:hover,.nav-downloads>summary:focus-visible,.live-test:focus-visible{animation-play-state:paused;background:#ffd24a}.nav-downloads[open]>summary{animation:none}@keyframes yellow-action-pulse{0%,100%{background-color:#ffe58b;box-shadow:0 0 0 2px #fff1b3,0 3px 8px #ba810018}50%{background-color:#ffd13b;box-shadow:0 0 0 5px #ffe99a80,0 4px 16px #ba810042}}@media(prefers-reduced-motion:reduce){.nav-downloads>summary,.live-test,.live-click-label{animation:none}.nav-downloads>summary .pointing-hand,.live-test .pointing-hand{transition:none;transform:none}}
 </style>
 </head>
 <body>
