@@ -2888,7 +2888,7 @@ function Start-Gui {
     }
 
     $f.Add_Shown({ Invoke-UiSafe {
-        try { $script:G.Split.SplitterDistance = [int]($script:G.Split.Height * 0.52) } catch { Write-DscError $_ 'Caught exception';}
+        try { $available=$script:G.Split.ClientSize.Height; $detailsHeight=[Math]::Min(120,[Math]::Max(65,[int]($available*0.22))); $script:G.Split.SplitterDistance=[Math]::Max(25,($available-$script:G.Split.SplitterWidth-$detailsHeight)) } catch { Write-DscError $_ 'Caught exception';}
         $hand = @(); if ($script:Handoff) { $hand = @($script:Handoff.fix | ForEach-Object { [int]$_ }) }
         if ($hand.Count) {
             $script:G.Sub.Text = "Reopened as administrator to fix: $($hand -join ', ') - testing again first ..."
