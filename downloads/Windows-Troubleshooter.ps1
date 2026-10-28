@@ -187,7 +187,7 @@ $Mode = $(if ($RequestedMode -eq 'gui') { 'gui' } else { 'console' })
 $script:Ui = $null; $script:UiJavaOffer = $null; $script:DssInstallOffered=$false; $script:InitialReviewShown=$false; $script:CancelRequested=$false; $script:RepairRunning=$false
 $script:UiLog = $null
 $script:UiStatus = $null
-$script:UiRow = $null
+$script:UiRow = $null; $script:UiProgress=$null
 $script:UiStatus = $null
 $script:Handoff = $null
 if ($TestMode) { $IsAdmin = ($env:DSSF_TEST_ADMIN -eq '1') }
@@ -696,6 +696,7 @@ function Get-WebFileResume([string]$Url, [string]$OutFile, [int]$Tries = 4) {
                 if (((Get-Date) - $last).TotalMilliseconds -gt 700) {
                     $last = Get-Date
                     $pct = $(if ($total -gt 0) { [int](100 * $done / $total) } else { 0 })
+                    if($script:UiStatus){$downloadStatus="Downloading DSS installer: $([Math]::Round($done/1MB,1)) MB";if($total -gt 0){$downloadStatus+=" / $([Math]::Round($total/1MB,1)) MB ($pct%)"};& $script:UiStatus $downloadStatus ('Source: '+$Url)}
                     Write-Progress -Activity 'Downloading DigitalSignerService 4.1.8 package' -Status ("{0:N1} of {1:N1} MB" -f ($done / 1MB), ($total / 1MB)) -PercentComplete $pct
                 }
             }
@@ -807,6 +808,7 @@ function Get-DssPackageFromWeb {
                 if(-not $mapped -or ($mapped.Version -and $mapped.Version -ne $Cfg.DssVersion)){throw "Downloaded package does not contain DSS $($Cfg.DssVersion)."}
                 $candidate=$mapped.Path
             }
+            if($script:UiStatus){& $script:UiStatus 'Validating downloaded DSS installer before installation ...' ('Package: '+$candidate)}
             $valid=Test-PackageValid $candidate
             if(-not $valid.Ok){throw ('Downloaded installer validation failed: '+$valid.Text)}
             $script:PkgOverride=$candidate;$script:PkgMsi=$null;$script:PkgSkipped=$false
@@ -934,6 +936,7 @@ function Build-PortableTool {
 
 function Invoke-Exe([string]$File, [string]$ArgLine, [int]$TimeoutSec = 900) {
     Log "RUN $File $ArgLine"
+    if($script:UiStatus){& $script:UiStatus ("Running $File - waiting for it to finish; see the session log for details.")}
     if ($TestMode) { return 0 }
     Write-DscEvent 'Info' 'Process started' @{ File = $File; TimeoutSeconds = $TimeoutSec }
     $p = Start-Process -FilePath $File -ArgumentList $ArgLine -PassThru -WindowStyle Hidden -ErrorAction Stop
@@ -1450,6 +1453,7 @@ function Open-StartupBrowser {
     if ($TestMode) { Log "OPEN DEFAULT $($Cfg.IsLiveUrl) [test]"; return $true }
     try {
         Start-Process -FilePath $Cfg.IsLiveUrl -ErrorAction Stop
+        if($script:Ui -and -not $script:Ui.IsDisposed){$script:Ui.TopMost=$script:G.PinTop.Checked;$script:Ui.BringToFront();[void]$script:Ui.Activate()}
         return $true
     } catch {
         Write-DscError $_ 'Open startup browser'
@@ -1459,6 +1463,7 @@ function Open-StartupBrowser {
 }
 function Invoke-StartupSequence([switch]$OpenBrowser, [switch]$FullCheck) {
     $script:DiagnosticsOnly=$true; $script:ReviewApproved=$false
+    if($script:UiProgress){& $script:UiProgress 'begin-checks' $null @($Defs).Count}
     # Read-only checks and package preparation first; selected repairs happen afterwards.
     Say ''; Say 'STEP 1 - Open isLive and check success for DigitalSignerService 4.1.8.' 'White'
     $opened = $false
@@ -2044,7 +2049,7 @@ function Request-ConsoleReview($Fixable) {
 
 function Read-DssDownloadApproval([string]$Message) {
     if($Mode -eq 'gui') {
-        return ([Windows.Forms.MessageBox]::Show($Message,'DSS 4.1.8 - permission to continue',[Windows.Forms.MessageBoxButtons]::YesNo,[Windows.Forms.MessageBoxIcon]::Question,[Windows.Forms.MessageBoxDefaultButton]::Button2) -eq 'Yes')
+        return ([Windows.Forms.MessageBox]::Show($script:G.Form,$Message,'DSS 4.1.8 - permission to continue',[Windows.Forms.MessageBoxButtons]::YesNo,[Windows.Forms.MessageBoxIcon]::Question,[Windows.Forms.MessageBoxDefaultButton]::Button2) -eq 'Yes')
     }
     Say $Message 'Yellow'
     return ((Ask '   Download DSS 4.1.8 now? [Y/N] : ' @('Y','N') 'N') -eq 'Y')
@@ -2096,6 +2101,7 @@ function Start-DssInstallRequest {
         Say 'Downloading or reusing the installer, validating, then installing DSS silently ...' 'Cyan'
         # Invoke the shared repair directly so a failed download cannot stop/remove DSS.
         $definition=$ByNo[3]
+        if($script:UiProgress){& $script:UiProgress 'begin-repairs' $null 1;& $script:UiProgress 'repairing' $definition 0}
         $before=Test-DssInstall
         if ($before.Pass -and -not $before.Warn) {
             $script:DssInstallOutcome='AlreadyInstalled'
@@ -2106,6 +2112,7 @@ function Start-DssInstallRequest {
         $after=Test-DssInstall
         if (-not $after.Pass) { throw 'The installer finished but DSS 4.1.8 installation validation did not pass. See dss-install.log and the installation row.' }
         $definition.Fixed=$true
+        if($script:UiProgress){& $script:UiProgress 'repaired' $definition 0}
         $script:DssInstallOutcome='Installed'
         Write-DscEvent 'Info' 'DSS install completed' @{Check=3}
         return $true
@@ -2190,7 +2197,8 @@ function Invoke-AllTests([int[]]$Nos) {
     $script:NotSecureChecked = $null; $script:NotSecure = $null
     foreach ($d in $Defs) {
         if ($Nos -and $Nos -notcontains $d.No) { continue }
-        if ($script:UiStatus) { & $script:UiStatus "Testing [$($d.No)] $($d.Title) ..." }
+        if($script:UiProgress){& $script:UiProgress 'checking' $d 0}
+        if ($script:UiStatus) { & $script:UiStatus "Checking [$($d.DisplayNo)] $($d.Title) ..." }
         Update-Ui
         try { $t = & $d.T; if ($null -eq $t) { throw 'Diagnostic returned no result.' } }
         catch {
@@ -2209,6 +2217,7 @@ function Invoke-AllTests([int[]]$Nos) {
             foreach ($i in $t.Info) { Add-Detail $d.R "Now: $i" }
         }
         if ($script:UiRow) { & $script:UiRow $d }
+        if($script:UiProgress){& $script:UiProgress 'checked' $d 0}
     }
 }
 # 'OK' = everything works / 'WARN' = works with warnings / 'FAIL' = not working
@@ -2223,20 +2232,23 @@ function Set-NotNeeded {
 }
 function Invoke-Fixes([int[]]$nos) {
     if(-not $script:ReviewApproved){throw 'Review / Pending fixes and explicitly apply them before running repairs.'}
+    if($script:UiProgress){& $script:UiProgress 'begin-repairs' $null @($FixOrder | Where-Object {$nos -contains $_}).Count}
     foreach ($no in $FixOrder) {
         if ($nos -notcontains $no) { continue }
         Update-Ui
-        if($script:CancelRequested){Write-DscEvent 'Info' 'Repair queue stopped' @{BeforeCheck=$no}; break}
+        if($script:CancelRequested){if($script:UiProgress){& $script:UiProgress 'cancelled' $null 0};Write-DscEvent 'Info' 'Repair queue stopped' @{BeforeCheck=$no}; break}
         $d = $ByNo[$no]; $r = $d.R
-        if ($script:UiStatus) { & $script:UiStatus "Fixing [$no] $($d.Title) ..." }
+        if($script:UiProgress){& $script:UiProgress 'repairing' $d 0}
+        if ($script:UiStatus) { & $script:UiStatus "Repairing [$($d.DisplayNo)] $($d.Title) ..." }
         Say ''; Say ("   [{0}] {1}" -f $no, $d.Title) 'White'
         try { $t = & $d.T; if ($null -eq $t) { throw 'Repair precheck returned no result.' } }
-        catch { Write-DscError $_ ("Repair precheck " + $no); $r.Status = 'FAIL'; $r.Advice = 'Repair was skipped because its precheck failed.'; continue }
-        if($script:CancelRequested){break}
+        catch { Write-DscError $_ ("Repair precheck " + $no); $r.Status = 'FAIL'; $r.Advice = 'Repair was skipped because its precheck failed.'; if($script:UiProgress){& $script:UiProgress 'repaired' $d 0}; continue }
+        if($script:CancelRequested){if($script:UiProgress){& $script:UiProgress 'cancelled' $null 0};break}
         $d.Fixed=$true
         Write-DscEvent 'Info' 'Repair attempted' @{ Check = $no }
         if ($t.Pass -and -not $t.Warn) { Add-Detail $r 'Solved by an earlier fix'; Say '      -> already solved by an earlier fix' 'Cyan' }
         else { try { & $d.F $r $t } catch { Write-DscError $_ ("Repair check " + $no); $r.Status = 'FAIL'; $r.Advice = $_.Exception.Message; Add-Detail $r "Repair error: $($_.Exception.Message)"; Log $_.ScriptStackTrace } }
+        if($script:UiProgress){& $script:UiProgress 'repaired' $d 0}
         Update-Ui
     }
 }
@@ -2416,13 +2428,14 @@ function Start-Gui {
             Log "UI error: $($err.Exception.Message) @ line $($err.InvocationInfo.ScriptLineNumber): $($err.InvocationInfo.Line.Trim())"
             try { Set-Busy $false } catch { Write-DscError $_ 'Caught exception';}
             try { $script:G.Stat.Text = "Error: $($err.Exception.Message)" } catch { Write-DscError $_ 'Caught exception';}
-            try { [void][Windows.Forms.MessageBox]::Show("Something went wrong:`r`n$($err.Exception.Message)`r`n`r`nThe window still works - click 'Run full check' to try again, or Close.`r`nLog: $LogFile", 'Digital Signing Service 4.1.8 Troubleshooter ( for E-Office )', [Windows.Forms.MessageBoxButtons]::OK, [Windows.Forms.MessageBoxIcon]::Warning) } catch { Write-DscError $_ 'Caught exception';}
+            try { [void][Windows.Forms.MessageBox]::Show($script:G.Form,"Something went wrong:`r`n$($err.Exception.Message)`r`n`r`nThe window still works - click 'Run full check' to try again, or Close.`r`nLog: $LogFile", 'Digital Signing Service 4.1.8 Troubleshooter ( for E-Office )', [Windows.Forms.MessageBoxButtons]::OK, [Windows.Forms.MessageBoxIcon]::Warning) } catch { Write-DscError $_ 'Caught exception';}
         }
     }
     $font = (New-UiFont 'Segoe UI' 9.5)
     $f = New-Object Windows.Forms.Form
     $f.Text = "$($Cfg.EditionName) | Build 2026.10.27.3 | DSS $($Cfg.DssVersion)"
     $f.Size = New-Object Drawing.Size(1100, 760); $f.MinimumSize = New-Object Drawing.Size(900, 600)
+    $f.TopMost=$true
     $f.StartPosition = 'CenterScreen'; $f.Font = $font; $f.BackColor = [Drawing.Color]::White
     $G.Form = $f
 
@@ -2491,8 +2504,21 @@ function Start-Gui {
     # status strip
     $ss = New-Object Windows.Forms.StatusStrip
     $G.Stat = New-Object Windows.Forms.ToolStripStatusLabel; $G.Stat.Spring = $true; $G.Stat.TextAlign = 'MiddleLeft'; $G.Stat.Text = 'Ready'
-    $G.Prog = New-Object Windows.Forms.ToolStripProgressBar; $G.Prog.Style = 'Marquee'; $G.Prog.Visible = $false; $G.Prog.Width = 160
+    $G.Prog = New-Object Windows.Forms.ToolStripProgressBar; $G.Prog.Style = 'Continuous'; $G.Prog.Visible = $false; $G.Prog.Width = 160
     [void]$ss.Items.Add($G.Stat); [void]$ss.Items.Add($G.Prog)
+
+    # A persistent, step-based battery display; 100% means processed, not repaired.
+    $progressPanel=New-Object Windows.Forms.Panel; $progressPanel.Dock='Bottom'; $progressPanel.Height=88; $progressPanel.Width=$f.ClientSize.Width
+    $progressPanel.BackColor=[Drawing.Color]::FromArgb(237,244,253)
+    $G.Stage=New-Object Windows.Forms.Label; $G.Stage.Location=New-Object Drawing.Point(12,5); $G.Stage.Size=New-Object Drawing.Size(($progressPanel.Width-24),22); $G.Stage.Anchor='Top,Left,Right'; $G.Stage.Font=(New-UiFont 'Segoe UI' 10 -Bold); $G.Stage.Text='Ready to check Digital Signer Service.'
+    $G.Target=New-Object Windows.Forms.Label; $G.Target.Location=New-Object Drawing.Point(12,28); $G.Target.Size=New-Object Drawing.Size(($progressPanel.Width-24),20); $G.Target.Anchor='Top,Left,Right'; $G.Target.AutoEllipsis=$true; $G.Target.Text='Current target and action will appear here.'
+    $batteryFrame=New-Object Windows.Forms.Panel; $batteryFrame.Location=New-Object Drawing.Point(12,54); $batteryFrame.Size=New-Object Drawing.Size(216,22); $batteryFrame.BorderStyle='FixedSingle'
+    $G.Battery=New-Object Windows.Forms.ProgressBar; $G.Battery.Dock='Fill'; $G.Battery.Minimum=0; $G.Battery.Maximum=100; $G.Battery.Style='Continuous'; $batteryFrame.Controls.Add($G.Battery)
+    $batteryCap=New-Object Windows.Forms.Panel; $batteryCap.Location=New-Object Drawing.Point(229,60); $batteryCap.Size=New-Object Drawing.Size(5,10); $batteryCap.BackColor=[Drawing.Color]::FromArgb(41,83,137)
+    $G.ProgressCount=New-Object Windows.Forms.Label; $G.ProgressCount.Location=New-Object Drawing.Point(248,55); $G.ProgressCount.Size=New-Object Drawing.Size(($progressPanel.Width-420),22); $G.ProgressCount.Anchor='Top,Left,Right'; $G.ProgressCount.Text='0 steps processed'
+    $G.PinTop=New-Object Windows.Forms.CheckBox; $G.PinTop.Text='Keep GUI on top'; $G.PinTop.Checked=$true; $G.PinTop.AutoSize=$true; $G.PinTop.Location=New-Object Drawing.Point(($progressPanel.Width-155),56); $G.PinTop.Anchor='Top,Right'
+    $G.PinTop.Add_CheckedChanged({$script:G.Form.TopMost=$script:G.PinTop.Checked})
+    $progressPanel.Controls.AddRange(@($G.Stage,$G.Target,$batteryFrame,$batteryCap,$G.ProgressCount,$G.PinTop))
 
     # list + details
     $split = New-Object Windows.Forms.SplitContainer; $split.Dock = 'Fill'; $split.Orientation = 'Horizontal'
@@ -2509,13 +2535,13 @@ function Start-Gui {
     $txt.Font = (New-UiFont 'Consolas' 9.5); $txt.BackColor = [Drawing.Color]::FromArgb(250, 251, 252); $G.Txt = $txt
     $split.Panel1.Controls.Add($lv); $split.Panel2.Controls.Add($txt)
 
-    $f.Controls.Add($split); $f.Controls.Add($other); $f.Controls.Add($live); $f.Controls.Add($hdr); $f.Controls.Add($bar); $f.Controls.Add($ss)
+    $f.Controls.Add($split); $f.Controls.Add($other); $f.Controls.Add($live); $f.Controls.Add($hdr); $f.Controls.Add($progressPanel); $f.Controls.Add($bar); $f.Controls.Add($ss)
     $G.Split = $split
 
 
     # ---- helpers bound to the window
     $script:UiLog = { param($m, $clr) $box = $script:G.Txt; if ($box -and $script:G.LogMode) { $box.AppendText($m + "`r`n") } }
-    $script:UiStatus = { param($m) $script:G.Stat.Text = $m; [System.Windows.Forms.Application]::DoEvents() }
+    $script:UiStatus = { param($m,$target) $script:G.Stat.Text = $m; $script:G.Stage.Text=$m; if($target){$script:G.Target.Text=$target}; [System.Windows.Forms.Application]::DoEvents() }
     $script:UiRow = {
         param($d)
         try { & $script:UiRowInner $d } catch { Write-DscError $_ 'Caught exception'; Log "row display error [$($d.No)]: $($_.Exception.Message)" }
@@ -2534,6 +2560,48 @@ function Start-Gui {
         $it.Checked = $false
         [System.Windows.Forms.Application]::DoEvents()
     }
+    function Get-GuiWorkTarget([int]$No) {
+        switch($No){
+            4 {return $Cfg.IsLiveUrl}
+            3 {return 'C:\Program Files\Digital Signer Service\4.1.8\Digital Signer Service.exe / validated DSS installer'}
+            5 {return 'Windows PATH, JAVA_HOME and Java option variables'}
+            7 {return 'java.exe execution and version response'}
+            1 {return 'Installed Java 8 / 64-bit runtime'}
+            2 {return 'Local TCP port 55101 and its listener process'}
+            6 {return ($env:SystemRoot+'\System32\drivers\etc\hosts -> 127.0.0.1 eoffsigner.eoffice.gov.in')}
+            8 {return 'Chrome -> signer isLive HTTPS endpoint'}
+            9 {return 'Edge -> signer isLive HTTPS endpoint'}
+            10 {return 'Firefox -> signer isLive HTTPS endpoint'}
+        }
+        return 'Digital Signer Service diagnostics'
+    }
+    $script:UiProgress = {
+        param($event,$definition,$total)
+        $ui=$script:G
+        if($event -in 'begin-checks','begin-repairs'){
+            $ui.ProgressPhase=$(if($event -eq 'begin-checks'){'Checks'}else{'Repairs'})
+            $ui.ProgressTotal=[Math]::Max(1,[int]$total)
+            $ui.ProgressDone=New-Object 'Collections.Generic.HashSet[int]'
+            $ui.Battery.Value=0; $ui.Prog.Value=0
+            $ui.Stage.Text=$ui.ProgressPhase+' starting ...'
+            $ui.Target.Text='Progress counts steps; downloads and installers can take longer.'
+        } elseif($event -eq 'cancelled'){
+            $ui.Stage.Text='Remaining repairs cancelled. Completed work will be checked again.'
+        } elseif($definition){
+            if($null -eq $ui.ProgressDone){$ui.ProgressDone=New-Object 'Collections.Generic.HashSet[int]';$ui.ProgressTotal=10;$ui.ProgressPhase='Checks'}
+            $ui.Target.Text='Target: '+(Get-GuiWorkTarget $definition.No)
+            if($event -in 'checked','repaired'){
+                [void]$ui.ProgressDone.Add([int]$definition.No)
+                $ui.Stage.Text=$(if($event -eq 'checked'){'Checked'}else{'Repair attempt finished; recheck follows'})+" [$($definition.DisplayNo)] $($definition.Title)"
+                if($event -eq 'checked'){$ui.Stage.Text+=' - '+(Get-Label $definition.R.Status)}
+            }else{$ui.Stage.Text=$(if($event -eq 'checking'){'Checking'}else{'Repairing'})+" [$($definition.DisplayNo)] $($definition.Title)"}
+            $pct=[Math]::Min(100,[int](100*$ui.ProgressDone.Count/$ui.ProgressTotal))
+            $ui.Battery.Value=$pct; $ui.Prog.Value=$pct
+        }
+        if($null -ne $ui.ProgressDone){$ui.ProgressCount.Text="$($ui.ProgressPhase): $($ui.ProgressDone.Count)/$($ui.ProgressTotal) steps ($($ui.Battery.Value)%); see results for success."}
+        [System.Windows.Forms.Application]::DoEvents()
+    }
+
     $script:Ui = $f
     $script:RequestPackage = { if($Cfg.AllowDssDownload -and $Cfg.PackageUrl){return (Start-DssPackageRequest)}; return ((Show-PackageDialog "The installer is needed to install DigitalSignerService $($Cfg.DssVersion) - select the zip / msi / folder") -eq 'ok') }
 
@@ -2665,11 +2733,11 @@ function Start-Gui {
             $msg += "`r`nNo DSS installation snapshot is created. Existing PATH/hosts repair safeguards remain."
             if (-not $IsAdmin) { $msg += "`r`n`r`nThis needs administrator rights: Reopen Windows PowerShell as Administrator before applying repairs." }
             $msg += "`r`n`r`nContinue?"
-            if ([Windows.Forms.MessageBox]::Show($msg, 'Permission to fix', [Windows.Forms.MessageBoxButtons]::YesNo, [Windows.Forms.MessageBoxIcon]::Question) -ne 'Yes') { return }
+            if ([Windows.Forms.MessageBox]::Show($script:G.Form,$msg, 'Permission to fix', [Windows.Forms.MessageBoxButtons]::YesNo, [Windows.Forms.MessageBoxIcon]::Question) -ne 'Yes') { return }
         }
         if (-not $IsAdmin) {
             if (Request-Elevation $nos 'fix') { $G.Form.Close() }
-            else { [void][Windows.Forms.MessageBox]::Show('Administrator permission was not given - nothing was changed.', 'Fix', [Windows.Forms.MessageBoxButtons]::OK, [Windows.Forms.MessageBoxIcon]::Warning) }
+            else { [void][Windows.Forms.MessageBox]::Show($script:G.Form,'Administrator permission was not given - nothing was changed.', 'Fix', [Windows.Forms.MessageBoxButtons]::OK, [Windows.Forms.MessageBoxIcon]::Warning) }
             return
         }
         foreach ($d in (Get-Failed)) { if ($nos -notcontains $d.No) { $d.R.Status = 'SKIP' } }
@@ -2686,8 +2754,8 @@ function Start-Gui {
         $fails = @(Get-Failed)
         if ($Results['4'].Status -in 'OK', 'FIXED', 'WARN') {
             $q = $(if ($fails.Count) { "$($fails.Count) item(s) still need attention (see red rows).`r`n`r`n" } else { "Done - isLive: $($Results['4'].Value)`r`n`r`n" }) + "Open the isLive page in Chrome / Edge / Firefox to see 'success'?`r`n(Restart a browser first if a browser setting was changed.)"
-            if ([Windows.Forms.MessageBox]::Show($q, 'Done', [Windows.Forms.MessageBoxButtons]::YesNo, [Windows.Forms.MessageBoxIcon]::Information) -eq 'Yes') { Stop-Flash; [void](Open-InBrowsers) } else { Start-Flash }
-        } else { [void][Windows.Forms.MessageBox]::Show("$($fails.Count) item(s) still need attention. Click a red row to see what to do.", 'Done', [Windows.Forms.MessageBoxButtons]::OK, [Windows.Forms.MessageBoxIcon]::Warning) }
+            if ([Windows.Forms.MessageBox]::Show($script:G.Form,$q, 'Done', [Windows.Forms.MessageBoxButtons]::YesNo, [Windows.Forms.MessageBoxIcon]::Information) -eq 'Yes') { Stop-Flash; [void](Open-InBrowsers) } else { Start-Flash }
+        } else { [void][Windows.Forms.MessageBox]::Show($script:G.Form,"$($fails.Count) item(s) still need attention. Click a red row to see what to do.", 'Done', [Windows.Forms.MessageBoxButtons]::OK, [Windows.Forms.MessageBoxIcon]::Warning) }
     }
 
     # ---- events
@@ -2696,8 +2764,8 @@ function Start-Gui {
     $G.BTest.Add_Click({ Invoke-UiSafe { Invoke-GuiTest -Full; Show-Detail; Show-InitialPendingReview } })
     $G.BCertificate.Add_Click({ Invoke-UiSafe { Show-SignerCertificateHelp -UseGui } })
     $G.BJavaUpdate.Add_Click({ Invoke-UiSafe {
-        if (-not $IsAdmin) { [void][Windows.Forms.MessageBox]::Show('Reopen this tool in an Administrator PowerShell session and select Update Java.', 'Optional Java update'); return }
-        if ([Windows.Forms.MessageBox]::Show($script:JavaUpdateOffer.Text + "`r`nInstall this optional update?", 'Optional Java update', [Windows.Forms.MessageBoxButtons]::YesNo) -ne 'Yes') { return }
+        if (-not $IsAdmin) { [void][Windows.Forms.MessageBox]::Show($script:G.Form,'Reopen this tool in an Administrator PowerShell session and select Update Java.', 'Optional Java update'); return }
+        if ([Windows.Forms.MessageBox]::Show($script:G.Form,$script:JavaUpdateOffer.Text + "`r`nInstall this optional update?", 'Optional Java update', [Windows.Forms.MessageBoxButtons]::YesNo) -ne 'Yes') { return }
         Set-Busy $true
         try { [void](Invoke-OptionalJavaUpdate -Confirmed); Invoke-GuiTest -Full; Show-Detail }
         finally { Set-Busy $false }
@@ -2723,7 +2791,7 @@ function Start-Gui {
                 $script:G.Sub.Text='DSS installation validated. Continuing the ordered checks ...'
                 Invoke-GuiTest -Full; Show-Detail
             } elseif ($script:DssInstallOutcome -ne 'Declined') {
-                [void][Windows.Forms.MessageBox]::Show($script:DssPackageFailure + "`r`n`r`nSession logs: " + $script:DscSessionDirectory, 'DSS download / installation failed', [Windows.Forms.MessageBoxButtons]::OK, [Windows.Forms.MessageBoxIcon]::Warning)
+                [void][Windows.Forms.MessageBox]::Show($script:G.Form,$script:DssPackageFailure + "`r`n`r`nSession logs: " + $script:DscSessionDirectory, 'DSS download / installation failed', [Windows.Forms.MessageBoxButtons]::OK, [Windows.Forms.MessageBoxIcon]::Warning)
             }
         } finally { Set-Busy $false; Update-Summary; [void](Save-Results) }
     }
@@ -2745,17 +2813,17 @@ function Start-Gui {
     } })
     $G.BOpen.Add_Click({ Invoke-UiSafe {
         if ($Results['4'].Status -notin 'OK', 'FIXED') {
-            if ([Windows.Forms.MessageBox]::Show("isLive is not OK yet - the browsers will show an error.`r`nOpen anyway?", 'Open isLive', [Windows.Forms.MessageBoxButtons]::YesNo, [Windows.Forms.MessageBoxIcon]::Question) -ne 'Yes') { return }
+            if ([Windows.Forms.MessageBox]::Show($script:G.Form,"isLive is not OK yet - the browsers will show an error.`r`nOpen anyway?", 'Open isLive', [Windows.Forms.MessageBoxButtons]::YesNo, [Windows.Forms.MessageBoxIcon]::Question) -ne 'Yes') { return }
         }
         Stop-Flash
         $o = Open-InBrowsers
-        [void][Windows.Forms.MessageBox]::Show("$($o.Text -replace '   \|   ', "`r`n")`r`n`r`nThe page must show:  success.  DSC Signer Service version : $($Cfg.DssVersion)`r`nAn expiry-only alert may be accepted for this signer. Use Browser exception help where needed.", 'DSC isLive Service Test-Check', [Windows.Forms.MessageBoxButtons]::OK, [Windows.Forms.MessageBoxIcon]::Information)
+        [void][Windows.Forms.MessageBox]::Show($script:G.Form,"$($o.Text -replace '   \|   ', "`r`n")`r`n`r`nThe page must show:  success.  DSC Signer Service version : $($Cfg.DssVersion)`r`nAn expiry-only alert may be accepted for this signer. Use Browser exception help where needed.", 'DSC isLive Service Test-Check', [Windows.Forms.MessageBoxButtons]::OK, [Windows.Forms.MessageBoxIcon]::Information)
     } })
     $G.BPack.Add_Click({ Invoke-UiSafe {
-        if ([Windows.Forms.MessageBox]::Show("Create ONE file (about 100 MB) that contains this tool and the DigitalSignerService $($Cfg.DssVersion) installer?`r`nIt will be saved next to this tool.", 'Build single-file tool', [Windows.Forms.MessageBoxButtons]::YesNo, [Windows.Forms.MessageBoxIcon]::Question) -ne 'Yes') { return }
+        if ([Windows.Forms.MessageBox]::Show($script:G.Form,"Create ONE file (about 100 MB) that contains this tool and the DigitalSignerService $($Cfg.DssVersion) installer?`r`nIt will be saved next to this tool.", 'Build single-file tool', [Windows.Forms.MessageBoxButtons]::YesNo, [Windows.Forms.MessageBoxIcon]::Question) -ne 'Yes') { return }
         if (-not (Find-DssPackageSource)) { if (-not (& $script:RequestPackage)) { return } }
         Set-Busy $true; $script:G.LogMode = $true; $out = Build-PortableTool; Set-Busy $false
-        if ($out) { [void][Windows.Forms.MessageBox]::Show("Created:`r`n$out`r`n`r`nCopy this one file to any PC and double-click it - the installer is inside.", 'Build single-file tool', [Windows.Forms.MessageBoxButtons]::OK, [Windows.Forms.MessageBoxIcon]::Information) }
+        if ($out) { [void][Windows.Forms.MessageBox]::Show($script:G.Form,"Created:`r`n$out`r`n`r`nCopy this one file to any PC and double-click it - the installer is inside.", 'Build single-file tool', [Windows.Forms.MessageBoxButtons]::OK, [Windows.Forms.MessageBoxIcon]::Information) }
     } })
     $G.BFix.Add_Click({ Invoke-UiSafe {
         Set-Busy $true
@@ -2827,7 +2895,7 @@ function Start-Gui {
             Invoke-GuiTest -Full
             $todo = @(Get-Fixable | Where-Object { $hand -contains $_.No } | ForEach-Object { $_.No })
             if ($todo.Count) { $script:G.Sub.Text="Diagnostics complete. Review / Pending fixes to continue after elevation." }
-            else { [void][Windows.Forms.MessageBox]::Show('Nothing left to fix - it already works.', 'Fix', [Windows.Forms.MessageBoxButtons]::OK, [Windows.Forms.MessageBoxIcon]::Information) }
+            else { [void][Windows.Forms.MessageBox]::Show($script:G.Form,'Nothing left to fix - it already works.', 'Fix', [Windows.Forms.MessageBoxButtons]::OK, [Windows.Forms.MessageBoxIcon]::Information) }
         } else {
             $script:G.Sub.Text = 'Step 1: opening isLive; expiry-only alerts are warnings. Continuing the ordered checks ...'
             Invoke-GuiTest
