@@ -1,0 +1,16 @@
+﻿Digital Signing Service 4.1.8 Troubleshooter (for E-Office)
+Developed by Girish Tiwari
+
+1. Extract ALL files from the ZIP into one folder.
+2. Open Start-Troubleshooter.cmd.
+3. Approve Windows UAC to open the administrator PowerShell menu.
+4. Choose Option 1 (console) or Option 2 (Windows GUI).
+5. Review checks and explicitly approve any repairs or installer downloads.
+6. Retain the session-log path if an error occurs.
+
+This bundle is unsigned. It does not bypass execution policy or antivirus.
+If organizational policy blocks it, obtain IT approval.
+No Java, remote-support application, or DSS installer is bundled here.
+The PowerShell tool downloads DSS only after approval, validates its package,
+and uses the configured direct source with Google Drive fallback.
+See LICENSE.txt. Third-party software retains its publisher's terms.

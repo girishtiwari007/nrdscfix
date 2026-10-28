@@ -1,0 +1,16 @@
+Digital Signing Service 4.1.8 Troubleshooter ( for E-Office ) - Usage terms
+Copyright (c) 2026 Girish Tiwari. All rights reserved.
+
+Permission is granted to download and execute the unmodified Digital Signing Service 4.1.8 Troubleshooter ( for E-Office ) tool
+for personal or internal organizational diagnostics and repair, and to keep
+copies necessary for that use and backup. Keep the copyright and usage notices.
+
+No permission is granted to redistribute, sublicense, sell, modify, or create
+derivative works of the original Digital Signing Service 4.1.8 Troubleshooter ( for E-Office ) code without prior written permission
+from Girish Tiwari, except where applicable law or existing rights permit it.
+No endorsement or ownership of third-party software is claimed. Downloaded DSS,
+Java, and other third-party components retain their respective owners' terms.
+These terms do not override rights under GitHub's terms or pre-existing licenses.
+
+The software is provided as is, without warranty, to the extent permitted by law.
+These terms do not make the source confidential or technically prevent copying.
