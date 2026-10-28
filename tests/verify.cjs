@@ -5,22 +5,33 @@ class E{constructor(){this.handlers={};this.classList={add(){},remove(){}};this.
 const ids=Object.fromEntries([...html.matchAll(/\bid="([^"]+)"/g)].map(m=>[m[1],new E()]));
 ids['standby-command'].textContent=html.match(/<pre id="standby-command">([\s\S]*?)<\/pre>/)[1];
 const menu=new E(),summary=new E(),launchers=[...html.matchAll(/<a\b[^>]*\bdata-launcher\b[^>]*>/g)].map(()=>new E()),links=Array.from({length:6},()=>new E());let created,copied='',selected=false,blob;
-const doc=new E();doc.querySelector=s=>s==='.nav-downloads'?menu:ids[s.slice(1)];doc.querySelectorAll=s=>s==='[data-launcher]'?launchers:s==='.nav-download-menu a'?links:[];doc.createElement=()=>created=new E();doc.body={appendChild(){}};doc.createRange=()=>({selectNodeContents(){selected=true}});
+const doc=new E();doc.querySelector=s=>s==='.nav-downloads'?menu:s==='.file-label'?new E():ids[s.slice(1)];doc.querySelectorAll=s=>s==='[data-launcher]'?launchers:s==='.nav-download-menu a'?links:[];doc.createElement=()=>created=new E();doc.body={appendChild(){}};doc.createRange=()=>({selectNodeContents(){selected=true}});
 const context={window:{getSelection:()=>({removeAllRanges(){},addRange(){}})},document:doc,navigator:{userAgent:'Windows',clipboard:{writeText:async t=>copied=t}},Blob,URL:{createObjectURL:b=>{blob=b;return 'blob:fixture'},revokeObjectURL(){}},setTimeout:()=>1,clearTimeout(){}};
 const inlineBehavior=html.match(/<script id="toolkit-behavior">([\s\S]*?)<\/script>/);
 if(inlineBehavior){vm.runInNewContext(inlineBehavior[1],context)}else{vm.runInNewContext(fs.readFileSync(path.join(root,'launcher-data.js'),'utf8'),context);vm.runInNewContext(fs.readFileSync(path.join(root,'app.js'),'utf8'),context)}
 (async()=>{
 check(!html.includes('YOUR SESSION CHECKLIST'),'session checklist removed');
 check(html.includes('STANDBY METHOD')&&ids['standby-command'].textContent.includes('SecurityProtocol'),'standby steps and complete command are present');
-check(launchers.length===4,'all four launcher links use download handler');
+check(launchers.length===2,'remaining launcher links use download handler');
 for(const launcher of launchers){let prevented=false;await launcher.fire('click',{preventDefault(){prevented=true}});check(prevented&&created.download==='Start-DSS-Online.cmd'&&created.clicked,'launcher saves CMD instead of navigating to source');}
 check(blob.type==='application/octet-stream','binary-download MIME type used');
 const cmd=fs.readFileSync(path.join(root,'downloads/Start-DSS-Online.cmd'),'utf8').replace(/\r?\n/g,'\r\n');check(await blob.text()===cmd,'downloaded launcher matches real CMD exactly');
 await ids['copy-command'].fire('click');check(copied.includes('-bor 3072')&&copied.includes('| iex'),'copy action includes both command lines');
 context.navigator.clipboard.writeText=async()=>{throw Error('Clipboard denied')};await ids['copy-command'].fire('click');check(selected,'clipboard denial offers manual selection');
 context.window.DSS_LAUNCHER='';await launchers[0].fire('click',{preventDefault(){}});check(ids['standby-command'].scrolled&&ids.toast.textContent.includes('standby'),'unavailable launcher directs user to fallback');
-menu.open=true;await doc.fire('keydown',{key:'Escape'});check(!menu.open&&summary.focused,'Escape closes download menu');
+
 const idList=[...html.matchAll(/\bid="([^"]+)"/g)].map(m=>m[1]);check(new Set(idList).size===idList.length,'HTML IDs unique');
 for(const m of html.matchAll(/(?:href|src)="([^"]+)"/g)){if(!m[1].startsWith('#')&&!m[1].startsWith('https://'))assert.ok(fs.existsSync(path.join(root,m[1])),m[1]);}check(true,'local asset links resolve');
+check(!html.includes('aria-label="Main navigation"'),'crossed-out top navigation removed');
+check(html.includes('Digital Service Service 4.1.8')&&html.includes('DSS - Drive Mirror'),'requested software labels present');
+ids['log-files'].files=[];ids['error-notes'].value='';
+let before=created;await ids['download-error-report'].fire('click');check(created===before,'empty log report requires files or issue description');
+await ids['download-help'].fire('click');check(created.download==='Digital-Service-help.txt'&&created.clicked,'help guide downloads as text');
+ids['error-notes'].value='Fixture issue';ids['log-files'].files=[{name:'events.jsonl',size:30,text:async()=> 'fixture exception'}];
+await ids['download-error-report'].fire('click');check(created.download==='Digital-Service-logs-error.txt'&&(await blob.text()).includes('fixture exception')&&!ids['download-error-report'].disabled,'selected logs and description are exported locally');
+ids['log-files'].files=[{name:'big.log',size:6*1024*1024,text:async()=> 'not read'}];before=created;
+await ids['download-error-report'].fire('click');check(created===before&&ids.toast.textContent.includes('5 MB'),'oversized local export is rejected');
+ids['log-files'].files=[{name:'unreadable.log',size:1,text:async()=>{throw Error('Denied')}}];
+await ids['download-error-report'].fire('click');check(!ids['download-error-report'].disabled&&ids.toast.textContent.includes('could not be read'),'read error restores export button');
 console.log('TOTAL PASS:',count);
 })().catch(e=>{console.error(e);process.exitCode=1});
