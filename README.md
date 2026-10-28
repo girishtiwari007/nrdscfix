@@ -33,3 +33,6 @@ local assets with CSP. Deploy over HTTPS and configure response security headers
 on a host that supports them. The local file preview may handle downloads differently.
 
 No commits or pushes are authorized by this setup.
+## Self-contained page build
+index.html now embeds its CSS and JavaScript with SHA256 hashes in its CSP. This removes separate asset requests needed for styling and controls, including when opening a downloaded/local page. Edit tools/index.template.html and the source CSS/JS files, then run python D:\github\nrdscfix\tools\build-page.py and node D:\github\nrdscfix\tests\verify.cjs before publishing. Do not hand-edit generated index.html or replace its CSP with unsafe-inline.
+

@@ -1,14 +1,14 @@
 const fs=require('fs'),path=require('path'),vm=require('vm'),assert=require('assert');
-const root=path.join(__dirname,'..'), html=fs.readFileSync(path.join(root,'index.html'),'utf8');let count=0;
+const root=path.join(__dirname,'..'), html=fs.readFileSync(process.env.DSS_HTML_FIXTURE || path.join(root,'index.html'),'utf8');let count=0;
 function check(ok,label){assert.ok(ok,label);count++;console.log('PASS:',label)}
 class E{constructor(){this.handlers={};this.classList={add(){},remove(){}};this.textContent='';this.open=false}addEventListener(k,f){(this.handlers[k]??=[]).push(f)}async fire(k,e={}){for(const f of this.handlers[k]||[])await f(e)}contains(t){return t===this}querySelector(){return summary}focus(){this.focused=true}click(){this.clicked=true}remove(){}scrollIntoView(){this.scrolled=true}}
 const ids=Object.fromEntries([...html.matchAll(/\bid="([^"]+)"/g)].map(m=>[m[1],new E()]));
 ids['standby-command'].textContent=html.match(/<pre id="standby-command">([\s\S]*?)<\/pre>/)[1];
-const menu=new E(),summary=new E(),launchers=[...html.matchAll(/\bdata-launcher\b/g)].map(()=>new E()),links=Array.from({length:6},()=>new E());let created,copied='',selected=false,blob;
+const menu=new E(),summary=new E(),launchers=[...html.matchAll(/<a\b[^>]*\bdata-launcher\b[^>]*>/g)].map(()=>new E()),links=Array.from({length:6},()=>new E());let created,copied='',selected=false,blob;
 const doc=new E();doc.querySelector=s=>s==='.nav-downloads'?menu:ids[s.slice(1)];doc.querySelectorAll=s=>s==='[data-launcher]'?launchers:s==='.nav-download-menu a'?links:[];doc.createElement=()=>created=new E();doc.body={appendChild(){}};doc.createRange=()=>({selectNodeContents(){selected=true}});
 const context={window:{getSelection:()=>({removeAllRanges(){},addRange(){}})},document:doc,navigator:{userAgent:'Windows',clipboard:{writeText:async t=>copied=t}},Blob,URL:{createObjectURL:b=>{blob=b;return 'blob:fixture'},revokeObjectURL(){}},setTimeout:()=>1,clearTimeout(){}};
-vm.runInNewContext(fs.readFileSync(path.join(root,'launcher-data.js'),'utf8'),context);
-vm.runInNewContext(fs.readFileSync(path.join(root,'app.js'),'utf8'),context);
+const inlineBehavior=html.match(/<script id="toolkit-behavior">([\s\S]*?)<\/script>/);
+if(inlineBehavior){vm.runInNewContext(inlineBehavior[1],context)}else{vm.runInNewContext(fs.readFileSync(path.join(root,'launcher-data.js'),'utf8'),context);vm.runInNewContext(fs.readFileSync(path.join(root,'app.js'),'utf8'),context)}
 (async()=>{
 check(!html.includes('YOUR SESSION CHECKLIST'),'session checklist removed');
 check(html.includes('STANDBY METHOD')&&ids['standby-command'].textContent.includes('SecurityProtocol'),'standby steps and complete command are present');
