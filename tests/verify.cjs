@@ -1,7 +1,7 @@
 const fs=require('fs'),path=require('path'),vm=require('vm'),assert=require('assert');
 const root=path.join(__dirname,'..'), html=fs.readFileSync(process.env.DSS_HTML_FIXTURE || path.join(root,'index.html'),'utf8');let count=0;
 function check(ok,label){assert.ok(ok,label);count++;console.log('PASS:',label)}
-class E{constructor(){this.handlers={};this.classList={add(){},remove(){}};this.textContent='';this.open=false}addEventListener(k,f){(this.handlers[k]??=[]).push(f)}async fire(k,e={}){for(const f of this.handlers[k]||[])await f(e)}contains(t){return t===this}querySelector(){return summary}focus(){this.focused=true}click(){this.clicked=true}remove(){}scrollIntoView(){this.scrolled=true}}
+class E{constructor(){this.handlers={};this.classList={add(){},remove(){}};this.textContent='';this.open=false}addEventListener(k,f){(this.handlers[k]??=[]).push(f)}async fire(k,e={}){for(const f of this.handlers[k]||[])await f(e)}contains(t){return t===this}querySelector(){return summary}focus(){this.focused=true}click(){this.clicked=true}remove(){}showModal(){this.open=true}close(){this.open=false}scrollIntoView(){this.scrolled=true}}
 const ids=Object.fromEntries([...html.matchAll(/\bid="([^"]+)"/g)].map(m=>[m[1],new E()]));
 ids['standby-command'].textContent=html.match(/<pre id="standby-command">([\s\S]*?)<\/pre>/)[1];
 const menu=new E(),summary=new E(),launchers=[...html.matchAll(/<a\b[^>]*\bdata-launcher\b[^>]*>/g)].map(()=>new E()),links=Array.from({length:6},()=>new E());let created,copied='',selected=false,blob;
@@ -33,5 +33,8 @@ ids['log-files'].files=[{name:'big.log',size:6*1024*1024,text:async()=> 'not rea
 await ids['download-error-report'].fire('click');check(created===before&&ids.toast.textContent.includes('5 MB'),'oversized local export is rejected');
 ids['log-files'].files=[{name:'unreadable.log',size:1,text:async()=>{throw Error('Denied')}}];
 await ids['download-error-report'].fire('click');check(!ids['download-error-report'].disabled&&ids.toast.textContent.includes('could not be read'),'read error restores export button');
+check(ids['token-reminder'].open,'token software reminder opens at page launch');
+await ids['token-reminder-ok'].fire('click');check(!ids['token-reminder'].open,'OK dismisses startup reminder');
+check(html.includes('It does not confirm that your DSC token is connected or ready'),'reminder distinguishes signer service from token readiness');
 console.log('TOTAL PASS:',count);
 })().catch(e=>{console.error(e);process.exitCode=1});

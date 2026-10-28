@@ -78,3 +78,12 @@ $('#download-error-report').addEventListener('click', async () => {
 $('.file-label').addEventListener('keydown', event => {
     if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); $('#log-files').click(); }
 });
+
+// Show on every page launch; do not claim token readiness or block the isLive link.
+const tokenReminder = $('#token-reminder');
+$('#token-reminder-ok').addEventListener('click', () => {
+    if (typeof tokenReminder.close === 'function') tokenReminder.close();
+    else tokenReminder.removeAttribute('open');
+});
+if (typeof tokenReminder.showModal === 'function') tokenReminder.showModal();
+else tokenReminder.setAttribute('open', '');
