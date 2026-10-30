@@ -87,3 +87,32 @@ $('#token-reminder-ok').addEventListener('click', () => {
 });
 if (typeof tokenReminder.showModal === 'function') tokenReminder.showModal();
 else tokenReminder.setAttribute('open', '');
+
+// Resource menus close on exit, selection, outside click, or Escape.
+const resourceMenus = all('.forms-menu');
+resourceMenus.forEach(menu => {
+    let leaveTimer;
+    menu.addEventListener('pointerleave', event => {
+        if (event.pointerType === 'touch') return;
+        leaveTimer = setTimeout(() => { menu.open = false; }, 220);
+    });
+    menu.addEventListener('pointerenter', () => clearTimeout(leaveTimer));
+    menu.addEventListener('toggle', () => {
+        if (menu.open) resourceMenus.forEach(other => { if (other !== menu) other.open = false; });
+    });
+    menu.addEventListener('click', event => {
+        if (event.target.closest('a')) menu.open = false;
+    });
+    menu.addEventListener('focusout', event => {
+        if (!menu.contains(event.relatedTarget)) menu.open = false;
+    });
+});
+document.addEventListener('click', event => {
+    resourceMenus.forEach(menu => { if (!menu.contains(event.target)) menu.open = false; });
+});
+document.addEventListener('keydown', event => {
+    if (event.key !== 'Escape') return;
+    resourceMenus.forEach(menu => {
+        if (menu.open) { menu.open = false; menu.querySelector('summary').focus(); }
+    });
+});

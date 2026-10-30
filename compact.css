@@ -110,3 +110,6 @@ html{scroll-padding-top:52px}body{padding-top:30px!important}
 .topbar nav{flex-wrap:wrap;gap:6px}.forms-menu>summary{font-size:12px}.railway-signers .forms-dropdown{right:0;left:auto}
 @media(min-width:1000px){.topbar nav{flex-wrap:nowrap;gap:5px}.topbar .forms-menu>summary{font-size:11px;padding:8px 9px}}
 @media(max-width:700px){.topbar nav{width:100%;order:3;justify-content:flex-start}.topbar .forms-menu>summary{font-size:11px;padding:8px}.railway-signers .forms-dropdown{position:fixed;left:20px;right:20px;top:155px;width:auto;max-height:calc(100dvh - 180px)}}
+
+/* Bridge the visual dropdown gap so pointer travel does not dismiss it. */
+.forms-dropdown::before{content:"";position:absolute;left:0;right:0;top:-12px;height:12px}

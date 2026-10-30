@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-6QDQt0xVe9hc/DFJ9grJq62Jdpwmuco/HaGa0pzfBcg='; style-src 'self' 'sha256-Uz24duV/3cd82SqwubZ4VGO2G84GcV3/74Akg8vWTVk='; img-src 'self' data:; font-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-LMzHj4Xw/MypoBr0ARTJFlcCPrnzGIVseNbWqhW1fGo='; style-src 'self' 'sha256-JoLNxx4dlioe07Im+qOWMPr2vTlScCSZhfb6KV6AP/I='; img-src 'self' data:; font-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="description" content="A guided Windows toolkit for Digital Signing Service 4.1.8 and E-Office. Download tools, check isLive, and launch the PowerShell troubleshooter.">
 <title>E-Office · Digital Signing Toolkit</title>
@@ -126,6 +126,9 @@ html{scroll-padding-top:52px}body{padding-top:30px!important}
 .topbar nav{flex-wrap:wrap;gap:6px}.forms-menu>summary{font-size:12px}.railway-signers .forms-dropdown{right:0;left:auto}
 @media(min-width:1000px){.topbar nav{flex-wrap:nowrap;gap:5px}.topbar .forms-menu>summary{font-size:11px;padding:8px 9px}}
 @media(max-width:700px){.topbar nav{width:100%;order:3;justify-content:flex-start}.topbar .forms-menu>summary{font-size:11px;padding:8px}.railway-signers .forms-dropdown{position:fixed;left:20px;right:20px;top:155px;width:auto;max-height:calc(100dvh - 180px)}}
+
+/* Bridge the visual dropdown gap so pointer travel does not dismiss it. */
+.forms-dropdown::before{content:"";position:absolute;left:0;right:0;top:-12px;height:12px}
 </style>
 </head>
 <body><div class="railway-boundary" aria-hidden="true"><span class="railway-signal"><i></i></span><span class="railway-train vande-bharat-train"><b class="train-coach"></b><b class="train-coach"></b><b class="train-cab"></b></span></div>
@@ -227,5 +230,34 @@ $('#token-reminder-ok').addEventListener('click', () => {
 });
 if (typeof tokenReminder.showModal === 'function') tokenReminder.showModal();
 else tokenReminder.setAttribute('open', '');
+
+// Resource menus close on exit, selection, outside click, or Escape.
+const resourceMenus = all('.forms-menu');
+resourceMenus.forEach(menu => {
+    let leaveTimer;
+    menu.addEventListener('pointerleave', event => {
+        if (event.pointerType === 'touch') return;
+        leaveTimer = setTimeout(() => { menu.open = false; }, 220);
+    });
+    menu.addEventListener('pointerenter', () => clearTimeout(leaveTimer));
+    menu.addEventListener('toggle', () => {
+        if (menu.open) resourceMenus.forEach(other => { if (other !== menu) other.open = false; });
+    });
+    menu.addEventListener('click', event => {
+        if (event.target.closest('a')) menu.open = false;
+    });
+    menu.addEventListener('focusout', event => {
+        if (!menu.contains(event.relatedTarget)) menu.open = false;
+    });
+});
+document.addEventListener('click', event => {
+    resourceMenus.forEach(menu => { if (!menu.contains(event.target)) menu.open = false; });
+});
+document.addEventListener('keydown', event => {
+    if (event.key !== 'Escape') return;
+    resourceMenus.forEach(menu => {
+        if (menu.open) { menu.open = false; menu.querySelector('summary').focus(); }
+    });
+});
 </script>
 </body></html>
