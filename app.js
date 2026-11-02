@@ -116,3 +116,12 @@ document.addEventListener('keydown', event => {
         if (menu.open) { menu.open = false; menu.querySelector('summary').focus(); }
     });
 });
+
+// Session-only view preference; no tracking or storage required.
+const viewToggle = $('#view-toggle');
+viewToggle.addEventListener('click', () => {
+    const comfortable = viewToggle.getAttribute('aria-pressed') !== 'true';
+    viewToggle.setAttribute('aria-pressed', String(comfortable));
+    document.body.classList.toggle('comfortable-view', comfortable);
+    viewToggle.textContent = comfortable ? 'Compact view' : 'Comfortable view';
+});

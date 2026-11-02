@@ -1,16 +1,12 @@
 @echo off
 setlocal
 title Digital Signing Service Troubleshooter
-echo Opening PowerShell with your approval to run the DSC-FIXER command.
-echo Windows will ask for Administrator permission before opening the tool.
-echo You will still review and approve repairs in the troubleshooter.
-echo.
-powershell.exe -NoProfile -Command "$ErrorActionPreference='Stop'; try { $command='[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor 3072; irm ''https://raw.githubusercontent.com/girishtiwari007/DSC-FIXER/main/install.ps1'' | iex'; $exe=Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'; $arguments='-NoProfile -STA -NoExit -Command '+[char]34+$command+[char]34; Start-Process -FilePath $exe -ArgumentList $arguments -Verb RunAs -ErrorAction Stop } catch { Write-Host ('Unable to launch: '+$_.Exception.Message) -ForegroundColor Yellow; exit 1 }"
+echo Approve UAC to open PowerShell. Download timing appears in that window.
+echo Repairs still require your approval.
+powershell.exe -NoProfile -Command "$ErrorActionPreference='Stop'; try { $command='$ErrorActionPreference=''Stop''; [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor 3072; Write-Host ''Downloading troubleshooter...'' -ForegroundColor Cyan; $timer=[Diagnostics.Stopwatch]::StartNew(); $client=New-Object Net.WebClient; try { $task=$client.DownloadStringTaskAsync(''https://raw.githubusercontent.com/girishtiwari007/DSC-FIXER/main/install.ps1''); while(-not $task.IsCompleted){ Write-Progress -Activity ''Downloading troubleshooter'' -Status (''Elapsed: ''+[int]$timer.Elapsed.TotalSeconds+'' seconds. Waiting for GitHub...''); if($timer.Elapsed.TotalSeconds -ge 90){$client.CancelAsync(); throw ''Download timed out after 90 seconds.''}; Start-Sleep -Milliseconds 250 }; $downloaded=$task.GetAwaiter().GetResult() } catch { Write-Host (''Download failed after ''+[int]$timer.Elapsed.TotalSeconds+'' seconds: ''+$_.Exception.Message) -ForegroundColor Yellow; Write-Host ''Retry: open Start-DSS-Online.cmd again, or rerun this command. Check your internet/proxy connection. If blocked by organization policy, contact IT.''; return } finally { Write-Progress -Activity ''Downloading troubleshooter'' -Completed; $client.Dispose() }; Write-Host (''Downloaded in ''+[math]::Round($timer.Elapsed.TotalSeconds,1)+'' seconds. Starting...'') -ForegroundColor Green; $downloaded | iex'; $exe=Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'; $arguments='-NoProfile -STA -NoExit -Command '+[char]34+$command+[char]34; Start-Process -FilePath $exe -ArgumentList $arguments -Verb RunAs -ErrorAction Stop } catch { Write-Host ('Unable to launch: '+$_.Exception.Message) -ForegroundColor Yellow; exit 1 }"
 if errorlevel 1 (
-  echo.
-  echo Download or launch did not complete. You can retry if UAC was cancelled.
-  echo If PowerShell is blocked by your organization, ask IT to approve the tool.
-  pause
-  exit /b 1
+ echo Launch did not complete. Reopen this file to retry. If policy blocks it, contact IT.
+ pause
+ exit /b 1
 )
 endlocal
