@@ -52,6 +52,8 @@ $('#download-help').addEventListener('click', () => {
         '7. Keep the session-log folder shown by the Windows tool; installer details are in dss-install.log.',
         '8. Select those local files in the website help area to combine them into an error text file.',
         '', 'The webpage cannot collect system logs automatically. No logs are uploaded.',
+        'Option 3: Reset Java & setting for other Websites. Select sites/browsers, then Continue or Cancel per browser. Complete site resets in browser settings.',
+        'Working Java is kept. Java updates are optional.',
         'If Windows policy blocks the tool, ask IT to approve it.'
     ].join('\r\n'));
     toast('Help guide prepared for download.');

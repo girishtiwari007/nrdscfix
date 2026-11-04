@@ -7,7 +7,7 @@ Trellix/AMSI and organization policy remain active. If blocked, stop and ask IT 
 #>
 & {
 [CmdletBinding()]
-param([ValidateSet('menu','console','gui','check')][string]$Mode = 'menu')
+param([ValidateSet('menu','console','gui','check','othergui')][string]$Mode = 'menu')
 if ($env:OS -ne 'Windows_NT') { throw 'This tool requires Windows.' }
 if ($ExecutionContext.SessionState.LanguageMode -ne 'FullLanguage') {
     throw 'Organization policy restricts this PowerShell session. Ask IT to approve this tool; it will not bypass that policy.'
@@ -15,7 +15,7 @@ if ($ExecutionContext.SessionState.LanguageMode -ne 'FullLanguage') {
 # Session logging is embedded so each published entry point remains self-contained.
 function Initialize-DscSession([string]$Repository, [string]$ModeName) {
     $script:DscSession = [ordered]@{
-        Schema = 1; ToolVersion = '2026.10.27.3'; Repository = $Repository
+        Schema = 1; ToolVersion = '2026.11.04.1'; Repository = $Repository
         SessionId = [guid]::NewGuid().ToString('N'); StartedUtc = [DateTime]::UtcNow.ToString('o')
         UpdatedUtc = ''; Mode = $ModeName; PowerShell = $PSVersionTable.PSVersion.ToString()
         State = 'Running'; ErrorCount = 0; Checks = @(); Improvements = @()
@@ -174,7 +174,7 @@ function Invoke-DscNative {
     $Results = $null
     $script:DscSession.Mode = $RequestedMode
     try {
-    if ($RequestedMode -eq 'gui' -and [Threading.Thread]::CurrentThread.ApartmentState -ne 'STA') {
+    if ($RequestedMode -in 'gui','othergui' -and [Threading.Thread]::CurrentThread.ApartmentState -ne 'STA') {
         Write-Host 'Windows popups require STA. Open Windows PowerShell (powershell.exe -STA), then run the native command again, or choose console mode.' -ForegroundColor Yellow
         return
     }
@@ -183,7 +183,7 @@ $ProgressPreference = 'SilentlyContinue'
 $TestRoot = $env:DSSF_TESTROOT
 $TestMode = -not [string]::IsNullOrEmpty($TestRoot)
 $CheckOnly = ($RequestedMode -eq 'check')
-$Mode = $(if ($RequestedMode -eq 'gui') { 'gui' } else { 'console' })
+$Mode = $(if ($RequestedMode -in 'gui','othergui') { 'gui' } else { 'console' })
 $script:Ui = $null; $script:UiJavaOffer = $null; $script:DssInstallOffered=$false; $script:InitialReviewShown=$false; $script:CancelRequested=$false; $script:RepairRunning=$false
 $script:UiLog = $null
 $script:UiStatus = $null
@@ -1877,7 +1877,7 @@ function Write-Report {
     $url = $Cfg.IsLiveUrl; $ver = $Cfg.DssVersion
     $html = @"
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>DSC Signer Check | Build 2026.10.27.3</title>
+<title>DSC Signer Check | Build 2026.11.04.1</title>
 <style>
 :root{--bg:#f4f6f9;--card:#fff;--ink:#16202c;--mute:#5d6b7a;--ok:#13804a;--okbg:#e6f6ed;--fx:#0b6aa6;--fxbg:#e5f1fa;--wn:#9a6400;--wnbg:#fdf3e1;--bd:#c62828;--bdbg:#fdeaea;--line:#e2e7ee}
 @media (prefers-color-scheme:dark){:root{--bg:#0f141a;--card:#18202a;--ink:#e8edf3;--mute:#9aa8b6;--okbg:#123222;--fxbg:#10283a;--wnbg:#33280f;--bdbg:#3a1616;--line:#26313d;--ok:#4cc38a;--fx:#5fb3ec;--wn:#e3b04b;--bd:#ff6b6b}}
@@ -1906,7 +1906,7 @@ ul{margin:8px 0 0;padding-left:20px}li{margin:2px 0}.det{color:var(--mute)}.lbl{
 .act li{color:var(--fx)}.adv{margin-top:10px;background:var(--bdbg);border-radius:8px;padding:8px 12px}
 footer{color:var(--mute);font-size:13px;margin-top:20px}
 </style></head><body><div class="wrap">
-<header><h1>Digital Signing Service 4.1.8 Troubleshooter ( for E-Office )</h1><div class="m">$($Cfg.EditionName) | Build 2026.10.27.3<br>$machine</div></header>
+<header><h1>Digital Signing Service 4.1.8 Troubleshooter ( for E-Office )</h1><div class="m">$($Cfg.EditionName) | Build 2026.11.04.1<br>$machine</div></header>
 <div class="banner $bcls"><div class="mark">$(if($failed -eq 0 -and -not $warns){'&#10004;'}else{'&#9888;'})</div><div><div class="big">$banner</div><div class="sub">$bsub</div></div></div>
 <div class="live"><div class="row"><b>Live browser test:</b><span id="lv">checking&#8230;</span><button onclick="chk()">Test again</button></div>
 <div class="m" style="margin-top:6px"><code>$url</code> &#8212; <a href="$url" target="_blank">open in new tab</a></div></div>
@@ -2341,7 +2341,7 @@ function Show-Fixable($list) {
 function Start-Console {
     if (-not $TestMode) { Clear-Host }
     Say '=================================================================' 'White'
-    Say ("$($Cfg.EditionName) | Build 2026.10.27.3") 'White'
+    Say ("$($Cfg.EditionName) | Build 2026.11.04.1") 'White'
     Say "  Digital Signing Service 4.1.8 Troubleshooter ( for E-Office )$(if($CheckOnly){'   [CHECK ONLY]'})$(if($TestMode){'   [TEST MODE]'})" 'White'
     Say "  Running as: $(if($IsAdmin){'Administrator'}else{'normal user (reopen PowerShell as Administrator for repairs)'})" 'Gray'
     Say '=================================================================' 'White'
@@ -2433,7 +2433,7 @@ function Start-Gui {
     }
     $font = (New-UiFont 'Segoe UI' 9.5)
     $f = New-Object Windows.Forms.Form
-    $f.Text = "$($Cfg.EditionName) | Build 2026.10.27.3 | DSS $($Cfg.DssVersion)"
+    $f.Text = "$($Cfg.EditionName) | Build 2026.11.04.1 | DSS $($Cfg.DssVersion)"
     $f.Size = New-Object Drawing.Size(1100, 760); $f.MinimumSize = New-Object Drawing.Size(900, 600)
     $f.TopMost=$true
     $f.StartPosition = 'CenterScreen'; $f.Font = $font; $f.BackColor = [Drawing.Color]::White
@@ -2909,7 +2909,209 @@ function Start-Gui {
 }
 
 
-    if ($Mode -eq 'gui') { Start-Gui } else { Start-Console }
+# Option 3 is isolated from DSS installation, ports, certificates and full repairs.
+function Get-OtherWebsiteCatalog {
+    @(
+        [pscustomobject]@{Name='HRMS';Origin='https://hrms.indianrail.gov.in'},
+        [pscustomobject]@{Name='IPAS';Origin='https://aims.indianrailways.gov.in'},
+        [pscustomobject]@{Name='IREPS';Origin='https://www.ireps.gov.in'},
+        [pscustomobject]@{Name='UDM / IMMS';Origin='https://ireps.gov.in'},
+        [pscustomobject]@{Name='IRWCMS / IRCEP';Origin='https://ircep.gov.in'}
+    )
+}
+function Get-OtherSiteSettingsUrl([string]$Browser,[string]$Origin) {
+    if($Origin -notin @((Get-OtherWebsiteCatalog).Origin)){throw 'Website is outside the approved railway list.'}
+    $escaped=[Uri]::EscapeDataString($Origin)
+    switch($Browser){
+        'Chrome' {return "chrome://settings/content/siteDetails?site=$escaped"}
+        'Edge' {return "edge://settings/content/siteDetails?site=$escaped"}
+        'Firefox' {return 'about:preferences#privacy'}
+        default {throw 'Unsupported browser.'}
+    }
+}
+function Show-OtherContinueDialog([string]$Message,[string]$Title) {
+    $d=New-Object Windows.Forms.Form
+    $d.Text=$Title;$d.Size=New-Object Drawing.Size(640,420);$d.MinimumSize=New-Object Drawing.Size(500,320)
+    $d.StartPosition='CenterParent';$d.Font=New-Object Drawing.Font('Segoe UI',10);$d.MinimizeBox=$false;$d.MaximizeBox=$false;$d.TopMost=$true
+    $text=New-Object Windows.Forms.TextBox;$text.Multiline=$true;$text.ReadOnly=$true;$text.Dock='Fill';$text.ScrollBars='Vertical';$text.Text=$Message
+    $bar=New-Object Windows.Forms.FlowLayoutPanel;$bar.Dock='Bottom';$bar.Height=50;$bar.FlowDirection='RightToLeft';$bar.Padding=New-Object Windows.Forms.Padding(8)
+    $cancel=New-Object Windows.Forms.Button;$cancel.Text='Cancel';$cancel.Width=100;$cancel.Height=30;$cancel.DialogResult='Cancel'
+    $continue=New-Object Windows.Forms.Button;$continue.Text='Continue';$continue.Width=100;$continue.Height=30;$continue.DialogResult='OK'
+    $bar.Controls.AddRange(@($cancel,$continue));$d.Controls.Add($text);$d.Controls.Add($bar)
+    $d.AcceptButton=$cancel;$d.CancelButton=$cancel;$d.ActiveControl=$cancel
+    try{$result=$d.ShowDialog($script:OtherUi.Form);return ($result -eq [Windows.Forms.DialogResult]::OK)}finally{$d.Dispose()}
+}
+function Confirm-OtherBrowserSettings([string]$Browser,[string[]]$Origins) {
+    $steps=switch($Browser){
+        'Firefox' {"1. Privacy & Security > Cookies and Site Data > Manage Data.`r`n2. Search each selected hostname and choose Remove Selected, then Save Changes.`r`n3. Open the selected site, then Page Info > Permissions to reset its explicit permissions.`r`nDo not choose Remove All or Clear all history."}
+        default {"1. For each selected site, click Delete data and confirm in the browser.`r`n2. Click Reset permissions and confirm in the browser.`r`n3. Reload that railway site and approve required permissions when prompted."}
+    }
+    $message="$Browser - selected railway websites only:`r`n$($Origins -join "`r`n")`r`n`r`n$steps`r`n`r`nClearing data signs you out of these origins. Other sites must be left untouched.`r`nContinue opens browser settings; Cancel skips $Browser. The tool does not click browser confirmation or security prompts for you."
+    return (Show-OtherContinueDialog $message "$Browser - Continue / Cancel")
+}
+
+function Open-OtherWebsiteSettings([string[]]$Browsers,[string[]]$Origins,[switch]$Confirmed) {
+    if(-not $Confirmed){throw 'Website settings require explicit confirmation.'}
+    if(-not $Browsers.Count -or -not $Origins.Count){throw 'Select at least one browser and website.'}
+    # Validate every selection before opening anything. No browser databases are edited.
+    foreach($browserName in $Browsers){foreach($origin in $Origins){[void](Get-OtherSiteSettingsUrl $browserName $origin)}}
+    foreach($browserName in $Browsers){
+        if($script:CancelRequested){break}
+        $browser=Find-Browser $browserName
+        if(-not $browser){Say "$browserName not found; no reset was performed." 'Yellow';continue}
+        if(-not (Confirm-OtherBrowserSettings $browserName $Origins)){
+            Write-DscEvent 'Info' 'Browser settings action cancelled' @{Browser=$browserName;Origins=$Origins}
+            Say "$browserName skipped by user; no settings were opened." 'Yellow'
+            continue
+        }
+        if($script:CancelRequested){break}
+
+        if($browserName -eq 'Firefox'){$targets=@('about:preferences#privacy')}else{$targets=@($Origins|ForEach-Object{Get-OtherSiteSettingsUrl $browserName $_})}
+        foreach($target in $targets){
+            if($script:CancelRequested){break}
+            if(-not $TestMode){Start-Process -FilePath $browser.Exe -ArgumentList $target -ErrorAction Stop|Out-Null}
+            Write-DscEvent 'Info' 'Railway site settings opened; reset pending user action' @{Browser=$browserName;Origins=$Origins;Settings=$target}
+            Say "$browserName settings opened. Delete data and reset permissions ONLY for: $($Origins -join ', '). Completion must be confirmed in the browser." 'Cyan'
+        }
+    }
+}
+function Test-OtherJavaWorks {
+    # This mode checks shared Java only; it must never repair a DSS bundled runtime.
+    $exe=Find-JavaOnPath
+    if(-not $exe){return @{Pass=$false;Kind='nopath';Value='Java not found on PATH';Info=@('Repair configuration or install missing Java after approval.')}}
+    $probe=Invoke-JavaVersion $exe
+    if($probe.Code -ne 0 -or $probe.Text -notmatch 'version\s+"([^\"]+)"'){
+        return @{Pass=$false;Kind='broken';Exe=$exe;Value='Java did not start';Info=@($probe.Text)}
+    }
+    $version=$matches[1]
+    if($probe.Text -match 'Picked up'){return @{Pass=$false;Kind='options';Value='Java options need review';Info=@($probe.Text)}}
+    return @{Pass=$true;Value="Java $version starts correctly";Info=@("Runtime: $exe",$probe.Text)}
+}
+function Invoke-OtherJavaChecks {
+    $checks=@(
+        @{No=5;Title='Java environment / stale PATH';Test={Test-EnvVars}},
+        @{No=7;Title='Java starts correctly';Test={Test-OtherJavaWorks}},
+        @{No=1;Title='Java 8 x64 registered installation';Test={Test-JavaLatest}}
+    )
+    foreach($check in $checks){
+        if($script:CancelRequested){break}
+        if($script:UiStatus){& $script:UiStatus ("Checking: "+$check.Title)}
+        $r=New-Result $check.No $check.Title
+        $ByNo[$check.No].R=$r
+        try{$t=& $check.Test;Set-FromTest $r $t}catch{Write-DscError $_ 'Option 3 Java check';$r.Status='FAIL';$r.Value=$_.Exception.Message}
+        Say ($check.Title+': '+$r.Status+' - '+$r.Value)
+        Update-Ui
+    }
+    Save-DscSession $Results
+}
+function Invoke-OtherJavaRepair([switch]$Confirmed) {
+    if(-not $Confirmed){throw 'Review and confirm Java repairs first.'}
+    if(-not $IsAdmin){throw 'Run Windows PowerShell as administrator before applying Java repairs.'}
+    if($script:CancelRequested){return}
+    $envTest=Test-EnvVars
+    if(-not $envTest.Pass){Repair-EnvVars $Results['5'] $envTest}
+    Update-Ui
+    if($script:CancelRequested){return}
+    $javaTest=Test-OtherJavaWorks
+    if(-not $javaTest.Pass){
+        if($javaTest.Kind -notin 'nopath','options','broken'){throw 'Unsupported shared Java repair.'}
+        Repair-JavaWorks $Results['7'] $javaTest
+    }else{Say 'Working Java retained. No update or reinstallation was applied.' 'Green'}
+    Write-DscEvent 'Info' 'Option 3 Java repair completed; recheck follows' @{}
+}
+function Start-OtherGui {
+    Add-Type -AssemblyName System.Windows.Forms,System.Drawing
+    $script:OtherUi=@{Busy=$false;Checked=$false}
+    $o=$script:OtherUi
+    $o.Form=New-Object Windows.Forms.Form
+    $f=$o.Form;$f.Text='Reset Java & setting for other Websites';$f.Size=New-Object Drawing.Size(980,820);$f.MinimumSize=New-Object Drawing.Size(820,650)
+    $f.StartPosition='CenterScreen';$f.AutoScaleMode='Dpi';$f.TopMost=$true
+    $f.Font=New-Object Drawing.Font('Segoe UI',10)
+    $layout=New-Object Windows.Forms.TableLayoutPanel;$layout.Dock='Fill';$layout.ColumnCount=1;$layout.RowCount=9;$layout.Padding=New-Object Windows.Forms.Padding(12)
+    foreach($height in @(55,130,42,60,120,75,44,100,48)){[void]$layout.RowStyles.Add((New-Object Windows.Forms.RowStyle('Absolute',$height)))}
+    $layout.AutoScroll=$true;$f.Controls.Add($layout)
+    $heading=New-Object Windows.Forms.Label;$heading.Dock='Fill';$heading.Text="Check Java, review findings, then approve repairs. Updates are optional.`r`nSite resets are guided in the browser and apply only to selected origins."
+    $layout.Controls.Add($heading,0,0)
+    $o.List=New-Object Windows.Forms.ListView;$o.List.Dock='Fill';$o.List.View='Details';$o.List.FullRowSelect=$true
+    [void]$o.List.Columns.Add('Java check',300);[void]$o.List.Columns.Add('Status',95);[void]$o.List.Columns.Add('Details',470);$layout.Controls.Add($o.List,0,1)
+    $bar=New-Object Windows.Forms.FlowLayoutPanel;$bar.Dock='Fill';$bar.WrapContents=$false
+    foreach($spec in @(@('Check','Run Java checks'),@('Repair','Review / Apply Java repairs'),@('Update','Optional Java update...'))){$b=New-Object Windows.Forms.Button;$b.Text=$spec[1];$b.AutoSize=$true;$b.Height=32;$o[$spec[0]]=$b;[void]$bar.Controls.Add($b)}
+    $layout.Controls.Add($bar,0,2)
+    $browserPanel=New-Object Windows.Forms.FlowLayoutPanel;$browserPanel.Dock='Fill'
+    $bl=New-Object Windows.Forms.Label;$bl.Text='Browsers:';$bl.AutoSize=$true;$bl.Padding=New-Object Windows.Forms.Padding(0,8,0,0);[void]$browserPanel.Controls.Add($bl)
+    $o.Browsers=@{}
+    foreach($name in 'Chrome','Firefox','Edge'){$box=New-Object Windows.Forms.CheckBox;$box.Text=$name;$box.AutoSize=$true;$box.Padding=New-Object Windows.Forms.Padding(5);$o.Browsers[$name]=$box;[void]$browserPanel.Controls.Add($box)}
+    $o.Pin=New-Object Windows.Forms.CheckBox;$o.Pin.Text='Keep GUI on top';$o.Pin.Checked=$true;$o.Pin.AutoSize=$true;[void]$browserPanel.Controls.Add($o.Pin)
+    $layout.Controls.Add($browserPanel,0,3)
+    $o.Sites=New-Object Windows.Forms.CheckedListBox;$o.Sites.Dock='Fill';$o.Sites.CheckOnClick=$true;$o.Sites.DisplayMember='Name'
+    foreach($site in Get-OtherWebsiteCatalog){[void]$o.Sites.Items.Add([pscustomobject]@{Name=($site.Name+' - '+$site.Origin);Origin=$site.Origin})}
+    $layout.Controls.Add($o.Sites,0,4)
+    $note=New-Object Windows.Forms.Label;$note.Dock='Fill';$note.Text="Clearing data signs you out of the selected sites. Other paths on the same origin are included.`r`nChrome/Edge: Delete data, then Reset permissions. Firefox: Manage Data > search each selected hostname > Remove Selected; use Page Info > Permissions to reset explicit permissions. Do not choose Remove All."
+    $layout.Controls.Add($note,0,5)
+    $o.SitesButton=New-Object Windows.Forms.Button;$o.SitesButton.Text='Reset selected website settings...';$o.SitesButton.AutoSize=$true;$o.SitesButton.Height=32;$layout.Controls.Add($o.SitesButton,0,6)
+    $o.Log=New-Object Windows.Forms.TextBox;$o.Log.Multiline=$true;$o.Log.ReadOnly=$true;$o.Log.ScrollBars='Vertical';$o.Log.Dock='Fill';$layout.Controls.Add($o.Log,0,7)
+    $bottom=New-Object Windows.Forms.FlowLayoutPanel;$bottom.Dock='Fill'
+    $o.Cancel=New-Object Windows.Forms.Button;$o.Cancel.Text='Cancel remaining';$o.Cancel.AutoSize=$true;$o.Cancel.Enabled=$false
+    $o.Close=New-Object Windows.Forms.Button;$o.Close.Text='Close';$o.Close.AutoSize=$true
+    $o.Progress=New-Object Windows.Forms.ProgressBar;$o.Progress.Width=160;$o.Progress.Style='Continuous'
+    $o.Status=New-Object Windows.Forms.Label;$o.Status.Text='Ready';$o.Status.Width=380;$o.Status.Height=35
+    $bottom.Controls.AddRange(@($o.Cancel,$o.Close,$o.Progress,$o.Status));$layout.Controls.Add($bottom,0,8)
+    $savedUi=$script:Ui;$savedStatus=$script:UiStatus;$savedLog=$script:UiLog
+    $script:Ui=$f
+    $script:UiStatus={param($message)$script:OtherUi.Status.Text=$message;[Windows.Forms.Application]::DoEvents()}
+    $script:UiLog={param($message,$color)$script:OtherUi.Log.AppendText($message+"`r`n")}
+    function Invoke-OtherUiWork([scriptblock]$Work){
+        $u=$script:OtherUi;if($u.Busy){return};$u.Busy=$true;$script:CancelRequested=$false
+        foreach($key in 'Check','Repair','Update','SitesButton','Close'){$u[$key].Enabled=$false}
+        $u.Cancel.Enabled=$true;$u.Progress.Value=10
+        try{& $Work;$u.Progress.Value=100;$u.Status.Text=$(if($script:CancelRequested){'Cancelled; current operation finished.'}else{'Finished. Review the results and log below.'})}
+        catch{Write-DscError $_ 'Option 3 GUI';$u.Log.AppendText('ERROR: '+$_.Exception.Message+"`r`n");$u.Status.Text='Operation failed; see session log.'}
+        finally{$u.Busy=$false;foreach($key in 'Check','Repair','Update','SitesButton','Close'){$u[$key].Enabled=$true};$u.Cancel.Enabled=$false;Save-DscSession $Results}
+    }
+    function Show-OtherJavaRows {
+        $u=$script:OtherUi;$u.List.Items.Clear()
+        foreach($id in '5','7','1'){$r=$Results[$id];if($r){$item=New-Object Windows.Forms.ListViewItem($r.Title);[void]$item.SubItems.Add($r.Status);[void]$item.SubItems.Add(($r.Value+' '+($r.Detail -join ' ')));[void]$u.List.Items.Add($item)}}
+        $u.Checked=$true
+    }
+    function Confirm-OtherUi([string]$Message,[string]$Title){
+        return (Show-OtherContinueDialog $Message $Title)
+    }
+    $o.Check.Add_Click({Invoke-OtherUiWork {Invoke-OtherJavaChecks;Show-OtherJavaRows}})
+    $o.Repair.Add_Click({Invoke-OtherUiWork {
+        Invoke-OtherJavaChecks;Show-OtherJavaRows
+        $summary=(@('5','7','1')|ForEach-Object{$r=$Results[$_];$r.Title+': '+$r.Status+' '+$r.Value}) -join "`r`n"
+        if(-not (Confirm-OtherUi ($summary+"`r`n`r`nContinue to repair stale Java environment entries and Java execution? Missing/corrupted Java may require downloading and installing Java. Working Java is kept. Websites are a separate action.") 'Review Java repairs')){return}
+        Invoke-OtherJavaRepair -Confirmed
+        Invoke-OtherJavaChecks;Show-OtherJavaRows
+    }})
+    $o.Update.Add_Click({Invoke-OtherUiWork {
+        Invoke-OtherJavaChecks;Show-OtherJavaRows
+        if(-not $IsAdmin){throw 'Open Windows PowerShell as administrator for an optional update.'}
+        if(-not (Confirm-OtherUi 'Check the vendor website for an optional Java update? Existing working Java is kept unless you approve installation separately. Release age cannot be inferred reliably from the installation date.' 'Optional Java update check')){return}
+        $script:JavaLatest=$null;Update-JavaOffer
+        Say $script:JavaUpdateOffer.Text
+        if($script:JavaUpdateOffer.Available -and (Confirm-OtherUi ($script:JavaUpdateOffer.Text+"`r`nDownload and install this optional update?") 'Optional Java installation')){[void](Invoke-OptionalJavaUpdate -Confirmed);Invoke-OtherJavaChecks;Show-OtherJavaRows}
+    }})
+    $o.SitesButton.Add_Click({Invoke-OtherUiWork {
+        $browsers=@('Chrome','Firefox','Edge'|Where-Object{$script:OtherUi.Browsers[$_].Checked})
+        $origins=@($script:OtherUi.Sites.CheckedItems|ForEach-Object{$_.Origin})
+        if(-not $browsers.Count -or -not $origins.Count){throw 'Select at least one browser and one website.'}
+        $message="Continue to reset settings for these websites only?`r`nBrowsers: $($browsers -join ', ')`r`n$($origins -join "`r`n")`r`n`r`nSite data deletion signs you out. Settings will open; YOU must click Delete data / Reset permissions for the selected sites. Firefox uses Manage Data and Page Info. No other site should be removed."
+        if(-not (Confirm-OtherUi $message 'Confirm selected website reset')){return}
+        # Unpin while the user completes browser confirmation controls.
+        $script:OtherUi.Pin.Checked=$false
+        Open-OtherWebsiteSettings $browsers $origins -Confirmed
+        $script:OtherUi.Log.AppendText("Settings opened. Reset is pending user action in the browser; it has not been verified.`r`n")
+    }})
+    $o.Pin.Add_CheckedChanged({$script:OtherUi.Form.TopMost=$script:OtherUi.Pin.Checked})
+    $o.Cancel.Add_Click({$script:CancelRequested=$true;$script:OtherUi.Status.Text='Cancelling after current operation; no installer is forcibly stopped.'})
+    $o.Close.Add_Click({$script:OtherUi.Form.Close()})
+    $f.Add_FormClosing({param($sender,$e)if($script:OtherUi.Busy){$e.Cancel=$true}})
+    $o.Log.Text="Session logs: $script:DscSessionDirectory`r`nJava checks are read-only. Website resets require selection and approval.`r`n"
+    try{[void]$f.ShowDialog()}finally{$script:Ui=$savedUi;$script:UiStatus=$savedStatus;$script:UiLog=$savedLog;$f.Dispose();$script:OtherUi=$null}
+}
+
+    if ($RequestedMode -eq 'othergui') { Start-OtherGui } elseif ($Mode -eq 'gui') { Start-Gui } else { Start-Console }
     } finally { Save-DscSession $Results }
 }
 function Invoke-DscSelection([string]$Selection) {
@@ -2951,7 +3153,7 @@ function Show-DscMenu {
     Write-Host ''
     Write-Host $rule -ForegroundColor Cyan
     Write-MenuRow 'Digital Signing Service 4.1.8 Troubleshooter ( for E-Office )' Yellow -Bold
-    Write-MenuRow 'Native PowerShell | Build 2026.10.27.3' White
+    Write-MenuRow 'Native PowerShell | Build 2026.11.04.1' White
     Write-MenuRow
     Write-MenuRow 'Developed by Girish Tiwari' Gray
     Write-MenuRow 'Senior Information Technology, Certified Microsoft Engineer' Gray
@@ -2961,9 +3163,11 @@ function Show-DscMenu {
     Write-MenuRow
     Write-MenuRow 'Option 2. Windows GUI-New Window Console Method' Cyan
     Write-MenuRow
-    Write-MenuRow 'Option 3. Refresh menu' Yellow
+    Write-MenuRow 'Option 3. Reset Java & setting for other Websites' Cyan
     Write-MenuRow
-    Write-MenuRow 'Option 4. Exit' Gray
+    Write-MenuRow 'Option 4. Refresh menu' Yellow
+    Write-MenuRow
+    Write-MenuRow 'Option 5. Exit' Gray
     Write-MenuRow
     Write-Host $rule -ForegroundColor Cyan
     Write-MenuRow 'Checks run first. Review and select repairs before applying.' White
@@ -2976,15 +3180,16 @@ function Show-DscMenu {
 if ($Mode -ne 'menu') { Invoke-DscSelection $Mode; return }
 while ($true) {
     Show-DscMenu
-    $menuInstruction = 'Select any one option to proceed further (1-4):'
+    $menuInstruction = 'Select any one option to proceed further (1-5):'
     Write-Host $menuInstruction -ForegroundColor Black -BackgroundColor Yellow
-    $choice = Read-Host 'Choose 1-4'
+    $choice = Read-Host 'Choose 1-5'
     switch ($choice) {
         '1' { Invoke-DscSelection 'console' }
         '2' { Invoke-DscSelection 'gui' }
-        '3' { continue }
-        '4' { return }
-        default { Write-Host 'Enter a number from 1 to 4.' -ForegroundColor Yellow }
+        '3' { Invoke-DscSelection 'othergui' }
+        '4' { continue }
+        '5' { return }
+        default { Write-Host 'Enter a number from 1 to 5.' -ForegroundColor Yellow }
     }
 }
 } catch {

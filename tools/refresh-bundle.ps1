@@ -1,4 +1,4 @@
-$ErrorActionPreference='Stop'
+﻿$ErrorActionPreference='Stop'
 $downloads=Join-Path (Split-Path $PSScriptRoot -Parent) 'downloads'
 [void][IO.Directory]::CreateDirectory($downloads)
 $source='D:\github\DSC-FIXER'
@@ -14,9 +14,12 @@ Developed by Girish Tiwari
 1. Extract ALL files from the ZIP into one folder.
 2. Open Start-Troubleshooter.cmd.
 3. Approve Windows UAC to open the administrator PowerShell menu.
-4. Choose Option 1 (console) or Option 2 (Windows GUI).
+4. Choose Option 1 (console), 2 (full Windows GUI), or 3 (Reset Java & setting for other Websites).
 5. Review checks and explicitly approve any repairs or installer downloads.
-6. Retain the session-log path if an error occurs.
+6. Option 3: select browsers and railway sites. Continue / Cancel is asked for each browser.
+   Complete Delete data / Reset permissions yourself in the browser for the selected sites only.
+   Working Java stays installed; Java updates are optional.
+7. Retain the session-log path if an error occurs.
 
 This bundle is unsigned. It does not bypass execution policy or antivirus.
 If organizational policy blocks it, obtain IT approval.
