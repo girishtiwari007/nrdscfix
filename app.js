@@ -3,22 +3,6 @@ const $ = selector => document.querySelector(selector);
 const all = selector => [...document.querySelectorAll(selector)];
 let toastTimer;
 function toast(message) { $('#toast').textContent = message; $('#toast').classList.add('visible'); clearTimeout(toastTimer); toastTimer = setTimeout(() => $('#toast').classList.remove('visible'), 6000); }
-all('[data-launcher]').forEach(button => button.addEventListener('click', event => {
-    event.preventDefault();
-    try {
-        if (!window.DSS_LAUNCHER) throw new Error('Launcher content unavailable');
-        const blob = new Blob([window.DSS_LAUNCHER], {type:'application/octet-stream'});
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url; link.download = 'Start-DSS-Online.cmd';
-        document.body.appendChild(link); link.click(); link.remove();
-        setTimeout(() => URL.revokeObjectURL(url), 60000);
-        toast('Save Start-DSS-Online.cmd, open it from Downloads, then approve UAC. If your browser blocks the download, use the standby PowerShell command.');
-    } catch {
-        toast('This browser could not prepare the launcher. Use the standby PowerShell command shown on this page.');
-        $('#standby-command').scrollIntoView({behavior:'smooth', block:'center'});
-    }
-}));
 $('#copy-command').addEventListener('click', async () => {
     try {
         await navigator.clipboard.writeText($('#standby-command').textContent.trim());
@@ -30,7 +14,7 @@ $('#copy-command').addEventListener('click', async () => {
     }
 });
 $('#live-link').addEventListener('click', () => toast('isLive opened in another tab. Check its response for success and version 4.1.8.'));
-$('#platform').textContent = /Windows/i.test(navigator.userAgent) ? 'Windows detected' : 'Launcher requires Windows';
+$('#platform').textContent = /Windows/i.test(navigator.userAgent) ? 'Windows detected' : 'Troubleshooter requires Windows';
 
 function saveTextFile(name, text) {
     const blob = new Blob([text], {type:'text/plain;charset=utf-8'});
@@ -43,9 +27,9 @@ $('#download-help').addEventListener('click', () => {
     saveTextFile('Digital-Service-help.txt', [
         'Digital Signing Service 4.1.8 Troubleshooter - Help',
         'Developed by Girish Tiwari', '',
-        '1. Download and open the PowerShell Launcher, then approve Windows UAC.',
-        '2. Alternatively run the standby command in Windows PowerShell as Administrator.',
-        '3. Choose console or GUI; let the initial full check finish.',
+        '1. Search Start for Windows PowerShell. Right-click and choose Run as administrator.',
+        '2. Copy both command lines from Troubleshooting Method. Paste into PowerShell and press Enter.',
+        '3. Choose Option 1 (console), 2 (full GUI), 3 (Java / websites), or 5 (CRIS switcher / installer).',
         '4. Review / Pending fixes opens if fixes are available. Apply only the repairs you approve.',
         '5. Cancel fixes exits review; Cancel remaining fixes finishes the active operation then stops the queue.',
         '6. Open DSC Service isLive Test and check for success and version 4.1.8.',

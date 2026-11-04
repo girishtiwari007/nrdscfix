@@ -7,7 +7,8 @@ Trellix/AMSI and organization policy remain active. If blocked, stop and ask IT 
 #>
 & {
 [CmdletBinding()]
-param([ValidateSet('menu','console','gui','check','othergui')][string]$Mode = 'menu')
+param([ValidateSet('menu','console','gui','check','othergui','crisgui','crisinstall')][string]$Mode = 'menu')
+$script:DscEntryText = '& {' + $MyInvocation.MyCommand.Definition + [Environment]::NewLine + '} @args'
 if ($env:OS -ne 'Windows_NT') { throw 'This tool requires Windows.' }
 if ($ExecutionContext.SessionState.LanguageMode -ne 'FullLanguage') {
     throw 'Organization policy restricts this PowerShell session. Ask IT to approve this tool; it will not bypass that policy.'
@@ -15,7 +16,7 @@ if ($ExecutionContext.SessionState.LanguageMode -ne 'FullLanguage') {
 # Session logging is embedded so each published entry point remains self-contained.
 function Initialize-DscSession([string]$Repository, [string]$ModeName) {
     $script:DscSession = [ordered]@{
-        Schema = 1; ToolVersion = '2026.11.04.1'; Repository = $Repository
+        Schema = 1; ToolVersion = '2026.11.04.2'; Repository = $Repository
         SessionId = [guid]::NewGuid().ToString('N'); StartedUtc = [DateTime]::UtcNow.ToString('o')
         UpdatedUtc = ''; Mode = $ModeName; PowerShell = $PSVersionTable.PSVersion.ToString()
         State = 'Running'; ErrorCount = 0; Checks = @(); Improvements = @()
@@ -174,7 +175,7 @@ function Invoke-DscNative {
     $Results = $null
     $script:DscSession.Mode = $RequestedMode
     try {
-    if ($RequestedMode -in 'gui','othergui' -and [Threading.Thread]::CurrentThread.ApartmentState -ne 'STA') {
+    if ($RequestedMode -in 'gui','othergui','crisgui','crisinstall' -and [Threading.Thread]::CurrentThread.ApartmentState -ne 'STA') {
         Write-Host 'Windows popups require STA. Open Windows PowerShell (powershell.exe -STA), then run the native command again, or choose console mode.' -ForegroundColor Yellow
         return
     }
@@ -183,7 +184,7 @@ $ProgressPreference = 'SilentlyContinue'
 $TestRoot = $env:DSSF_TESTROOT
 $TestMode = -not [string]::IsNullOrEmpty($TestRoot)
 $CheckOnly = ($RequestedMode -eq 'check')
-$Mode = $(if ($RequestedMode -in 'gui','othergui') { 'gui' } else { 'console' })
+$Mode = $(if ($RequestedMode -in 'gui','othergui','crisgui','crisinstall') { 'gui' } else { 'console' })
 $script:Ui = $null; $script:UiJavaOffer = $null; $script:DssInstallOffered=$false; $script:InitialReviewShown=$false; $script:CancelRequested=$false; $script:RepairRunning=$false
 $script:UiLog = $null
 $script:UiStatus = $null
@@ -1877,7 +1878,7 @@ function Write-Report {
     $url = $Cfg.IsLiveUrl; $ver = $Cfg.DssVersion
     $html = @"
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>DSC Signer Check | Build 2026.11.04.1</title>
+<title>DSC Signer Check | Build 2026.11.04.2</title>
 <style>
 :root{--bg:#f4f6f9;--card:#fff;--ink:#16202c;--mute:#5d6b7a;--ok:#13804a;--okbg:#e6f6ed;--fx:#0b6aa6;--fxbg:#e5f1fa;--wn:#9a6400;--wnbg:#fdf3e1;--bd:#c62828;--bdbg:#fdeaea;--line:#e2e7ee}
 @media (prefers-color-scheme:dark){:root{--bg:#0f141a;--card:#18202a;--ink:#e8edf3;--mute:#9aa8b6;--okbg:#123222;--fxbg:#10283a;--wnbg:#33280f;--bdbg:#3a1616;--line:#26313d;--ok:#4cc38a;--fx:#5fb3ec;--wn:#e3b04b;--bd:#ff6b6b}}
@@ -1906,7 +1907,7 @@ ul{margin:8px 0 0;padding-left:20px}li{margin:2px 0}.det{color:var(--mute)}.lbl{
 .act li{color:var(--fx)}.adv{margin-top:10px;background:var(--bdbg);border-radius:8px;padding:8px 12px}
 footer{color:var(--mute);font-size:13px;margin-top:20px}
 </style></head><body><div class="wrap">
-<header><h1>Digital Signing Service 4.1.8 Troubleshooter ( for E-Office )</h1><div class="m">$($Cfg.EditionName) | Build 2026.11.04.1<br>$machine</div></header>
+<header><h1>Digital Signing Service 4.1.8 Troubleshooter ( for E-Office )</h1><div class="m">$($Cfg.EditionName) | Build 2026.11.04.2<br>$machine</div></header>
 <div class="banner $bcls"><div class="mark">$(if($failed -eq 0 -and -not $warns){'&#10004;'}else{'&#9888;'})</div><div><div class="big">$banner</div><div class="sub">$bsub</div></div></div>
 <div class="live"><div class="row"><b>Live browser test:</b><span id="lv">checking&#8230;</span><button onclick="chk()">Test again</button></div>
 <div class="m" style="margin-top:6px"><code>$url</code> &#8212; <a href="$url" target="_blank">open in new tab</a></div></div>
@@ -2341,7 +2342,7 @@ function Show-Fixable($list) {
 function Start-Console {
     if (-not $TestMode) { Clear-Host }
     Say '=================================================================' 'White'
-    Say ("$($Cfg.EditionName) | Build 2026.11.04.1") 'White'
+    Say ("$($Cfg.EditionName) | Build 2026.11.04.2") 'White'
     Say "  Digital Signing Service 4.1.8 Troubleshooter ( for E-Office )$(if($CheckOnly){'   [CHECK ONLY]'})$(if($TestMode){'   [TEST MODE]'})" 'White'
     Say "  Running as: $(if($IsAdmin){'Administrator'}else{'normal user (reopen PowerShell as Administrator for repairs)'})" 'Gray'
     Say '=================================================================' 'White'
@@ -2433,7 +2434,7 @@ function Start-Gui {
     }
     $font = (New-UiFont 'Segoe UI' 9.5)
     $f = New-Object Windows.Forms.Form
-    $f.Text = "$($Cfg.EditionName) | Build 2026.11.04.1 | DSS $($Cfg.DssVersion)"
+    $f.Text = "$($Cfg.EditionName) | Build 2026.11.04.2 | DSS $($Cfg.DssVersion)"
     $f.Size = New-Object Drawing.Size(1100, 760); $f.MinimumSize = New-Object Drawing.Size(900, 600)
     $f.TopMost=$true
     $f.StartPosition = 'CenterScreen'; $f.Font = $font; $f.BackColor = [Drawing.Color]::White
@@ -3111,7 +3112,431 @@ function Start-OtherGui {
     try{[void]$f.ShowDialog()}finally{$script:Ui=$savedUi;$script:UiStatus=$savedStatus;$script:UiLog=$savedLog;$f.Dispose();$script:OtherUi=$null}
 }
 
-    if ($RequestedMode -eq 'othergui') { Start-OtherGui } elseif ($Mode -eq 'gui') { Start-Gui } else { Start-Console }
+# CRIS switcher: identities are exact executable paths plus port ownership.
+function Get-CrisKnownPackages {
+    @{
+        IPAS=@{Hash='9C96F5F1549A1FEDBCA2D242C420FE1A973FA394816B4B21E3E376A53661E424';Product='{CFF8B26A-17C9-4F32-AC63-204F7DAEFEFC}';Upgrade='{67C9F436-2083-4DD0-A5FA-3D153A35778C}';Child='CrisSigner_IPAS';ExeBytes=805480}
+        IRWCMS=@{Hash='AAA1C7AAB92304AD0C0985ADD3561902FEF2D6ABF46E4ED602E8F8F8B339B442';Product='{C73B4CC8-099B-41D6-B484-41FD64C4B456}';Upgrade='{16D577DD-862C-46FD-9C91-AC97FA6D4F12}';Child='CrisSigner_IRWCMS';ExeBytes=805856}
+    }
+}
+function Test-CrisKnownPackage([string]$Id,[string]$Hash,[string]$Product,[string]$Upgrade){
+    $known=(Get-CrisKnownPackages)[$Id]
+    return [bool]($known -and $Hash -eq $known.Hash -and $Product -eq $known.Product -and $Upgrade -eq $known.Upgrade)
+}
+function Save-CrisRuntimeSource {
+    $folder=Join-Path $env:LOCALAPPDATA 'RailwayCrisSwitcher';[void][IO.Directory]::CreateDirectory($folder);$copy=Join-Path $folder 'install.ps1'
+    if($NativeSourcePath -and (Test-Path -LiteralPath $NativeSourcePath -PathType Leaf)){
+        if([IO.Path]::GetFullPath($NativeSourcePath) -ine [IO.Path]::GetFullPath($copy)){Copy-Item -LiteralPath $NativeSourcePath -Destination $copy -Force}
+        if((Get-FileHash -LiteralPath $copy).Hash -ne (Get-FileHash -LiteralPath $NativeSourcePath).Hash){throw 'Runtime source verification failed.'}
+    }elseif($script:DscEntryText){
+        $tokens=$null;$errors=$null;[void][Management.Automation.Language.Parser]::ParseInput($script:DscEntryText,[ref]$tokens,[ref]$errors)
+        if($errors.Count){throw 'In-memory source could not be preserved safely.'}
+        [IO.File]::WriteAllText($copy,$script:DscEntryText,(New-Object Text.UTF8Encoding $true))
+    }else{throw 'No local or in-memory source is available. Use the extracted website bundle.'}
+    return $copy
+}
+function Get-CrisExistingProducts {
+    $result=@{}
+    foreach($entry in Get-UninstallEntries){
+        if($entry.DisplayName -notmatch '(?i)^Cris\s*Signer(?:\s+[\d.]+)?$'){continue}
+        $code=[string]$entry.PSChildName
+        if($code -notmatch '^\{[0-9A-Fa-f]{8}-(?:[0-9A-Fa-f]{4}-){3}[0-9A-Fa-f]{12}\}$'){throw "Existing CRIS Signer uses an unsupported uninstaller: $($entry.DisplayName). Automatic setup stopped before removing anything."}
+        $result[$code]=[pscustomobject]@{Code=$code;Name=$entry.DisplayName;Version=$entry.DisplayVersion;Location=$entry.InstallLocation}
+    }
+    return @($result.Values)
+}
+function Invoke-CrisMsiWait([string]$Arguments,[string]$Operation){
+    if(-not $IsAdmin){throw 'Administrator rights are required.'}
+    Write-DscEvent 'Info' $Operation @{Arguments=$Arguments}
+    $process=Start-Process -FilePath "$env:SystemRoot\System32\msiexec.exe" -ArgumentList $Arguments -PassThru -ErrorAction Stop
+    $watch=[Diagnostics.Stopwatch]::StartNew()
+    try{
+        while(-not $process.WaitForExit(250)){
+            if($script:UiStatus){& $script:UiStatus ("$Operation - $([int]$watch.Elapsed.TotalSeconds)s elapsed. Windows Installer is running; cancellation waits for it to finish.")}
+            Update-Ui
+        }
+        $code=$process.ExitCode
+    }finally{$process.Dispose()}
+    Write-DscEvent 'Info' ($Operation+' finished') @{ExitCode=$code;Seconds=$watch.Elapsed.TotalSeconds}
+    if($code -notin 0,1605,3010,1641){throw "$Operation failed with exit code $code. See the installer log."}
+    return $code
+}
+function New-CrisFolderTransform($Plan){
+    $known=(Get-CrisKnownPackages)[$Plan.Id]
+    if(-not (Test-CrisKnownPackage $Plan.Id $Plan.SHA256 $Plan.ProductCode $Plan.UpgradeCode)){throw 'The package is not one of the exact inspected CRIS copies.'}
+    $working=Join-Path $RunDir ('CRIS-'+$Plan.Id+'-transform-source.msi');$mst=Join-Path $RunDir ('CRIS-'+$Plan.Id+'-folder.mst')
+    Copy-Item -LiteralPath $Plan.Path -Destination $working -Force
+    $installer=$null;$original=$null;$modified=$null;$view=$null
+    try{
+        $installer=New-Object -ComObject WindowsInstaller.Installer;$original=$installer.OpenDatabase($Plan.Path,0);$modified=$installer.OpenDatabase($working,1)
+        $view=$modified.OpenView("UPDATE ``Directory`` SET ``DefaultDir``='$($known.Child)' WHERE ``Directory``='CrisSigner_Dir'");[void]$view.Execute();[void]$view.Close();[void][Runtime.InteropServices.Marshal]::ReleaseComObject($view);$view=$null
+        # Avoid the installers' shared generic desktop/startup shortcut names.
+        $view=$modified.OpenView("UPDATE ``Shortcut`` SET ``Name``='CRISSigner_$($Plan.Id)' WHERE ``Shortcut``='CrisSigner'");[void]$view.Execute();[void]$view.Close();[void][Runtime.InteropServices.Marshal]::ReleaseComObject($view);$view=$null
+        $view=$modified.OpenView("UPDATE ``Shortcut`` SET ``Name``='CRISSigner_$($Plan.Id)' WHERE ``Shortcut``='CrisSigner_2'");[void]$view.Execute();[void]$view.Close();[void][Runtime.InteropServices.Marshal]::ReleaseComObject($view);$view=$null
+        $view=$modified.OpenView("DELETE FROM ``Shortcut`` WHERE ``Shortcut``='CrisSigner_1'");[void]$view.Execute();[void]$view.Close();[void][Runtime.InteropServices.Marshal]::ReleaseComObject($view);$view=$null
+        [void]$modified.Commit()
+        if(-not $modified.GenerateTransform($original,$mst)){throw 'No folder transform was generated.'}
+        [void]$modified.CreateTransformSummaryInfo($original,$mst,0,7)
+    }finally{
+        if($view){try{[void]$view.Close()}catch{};[void][Runtime.InteropServices.Marshal]::ReleaseComObject($view)}
+        foreach($com in @($modified,$original,$installer)){if($com){[void][Runtime.InteropServices.Marshal]::ReleaseComObject($com)}}
+    }
+    if(-not (Test-Path -LiteralPath $mst -PathType Leaf)){throw 'Folder transform missing.'}
+    return $mst
+}
+function Get-CrisSetupPackage([string]$Id){
+    $d=Get-CrisDefinition $Id;$folder=Join-Path $RunDir 'CRIS-oneclick';[void][IO.Directory]::CreateDirectory($folder)
+    $file=Join-Path $folder ($Id+'.download');$client=New-Object Net.WebClient;$watch=[Diagnostics.Stopwatch]::StartNew()
+    try{
+        $task=$client.DownloadFileTaskAsync($d.Url,$file)
+        while(-not $task.IsCompleted){
+            if($script:CancelRequested -or $watch.Elapsed.TotalSeconds -gt 180){$client.CancelAsync();throw 'CRIS download cancelled or timed out.'}
+            if($script:UiStatus){& $script:UiStatus ("Downloading $Id package - $([int]$watch.Elapsed.TotalSeconds)s elapsed")}
+            Start-Sleep -Milliseconds 200;Update-Ui
+        }
+        $task.GetAwaiter().GetResult()
+    }finally{$client.Dispose()}
+    # Detect the actual bytes; the IPAS Drive URL currently returns MSI, not ZIP.
+    $stream=[IO.File]::OpenRead($file);$header=New-Object byte[] 8;try{$read=$stream.Read($header,0,8)}finally{$stream.Dispose()}
+    if($read -eq 8 -and [BitConverter]::ToString($header) -eq 'D0-CF-11-E0-A1-B1-1A-E1'){$msi=Join-Path $folder ($Id+'.msi');Move-Item -LiteralPath $file -Destination $msi -Force}
+    elseif($read -ge 4 -and $header[0] -eq 0x50 -and $header[1] -eq 0x4B){
+        $expanded=Join-Path $folder ($Id+'-expanded');Expand-DssArchive -LiteralPath $file -DestinationPath $expanded
+        $choices=@(Get-ChildItem -LiteralPath $expanded -Filter *.msi -File -Recurse);if($choices.Count -ne 1){throw 'The package must contain exactly one inspected MSI.'};$msi=$choices[0].FullName
+    }else{throw 'Downloaded content is neither an MSI nor ZIP; no installer will be run.'}
+    $plan=Get-CrisMsiPlan $msi $Id
+    if(-not (Test-CrisKnownPackage $Id $plan.SHA256 $plan.ProductCode $plan.UpgradeCode)){throw 'The downloaded package changed. Re-inspection is required before uninstalling any existing signer.'}
+    return $plan
+}
+function Stop-CrisLegacyProcess {
+    foreach($legacy in @('C:\CrisSigner\CrisSigner\CrisSigner.exe','C:\CrisSigner\CrisSigner.exe')){
+        foreach($p in @(Get-CrisProcesses $legacy)){
+            if(@(Get-CimInstance Win32_Service -Filter "ProcessId=$($p.ProcessId)" -ErrorAction Stop).Count){throw 'Legacy CRIS is service-backed. Automatic migration stopped before uninstall.'}
+            $current=Get-CimInstance Win32_Process -Filter "ProcessId=$($p.ProcessId)" -ErrorAction Stop
+            if(-not $current -or $current.ExecutablePath -ine $legacy){throw 'Legacy process identity changed.'}
+            $native=Get-Process -Id $p.ProcessId -ErrorAction Stop
+            try{[void]$native.CloseMainWindow();if(-not $native.WaitForExit(3000)){$native.Kill();if(-not $native.WaitForExit(5000)){throw 'Legacy signer did not stop.'}}}finally{$native.Dispose()}
+        }
+    }
+}
+function New-CrisSignerShortcuts {
+    $desktop=[Environment]::GetFolderPath('Desktop');$shell=New-Object -ComObject WScript.Shell
+    try{
+        foreach($d in Get-CrisCatalog){
+            if(-not (Test-Path -LiteralPath $d.Exe -PathType Leaf)){throw "Shortcut target missing: $($d.Exe)"}
+            $path=Join-Path $desktop ('CRISSigner_'+$d.Id+'.lnk');$link=$shell.CreateShortcut($path);$link.TargetPath=$d.Exe;$link.WorkingDirectory=$d.Folder;$link.Save()
+            $bytes=[IO.File]::ReadAllBytes($path);if($bytes.Length -lt 76){throw 'Invalid shortcut.'};$bytes[21]=$bytes[21] -bor 0x20;[IO.File]::WriteAllBytes($path,$bytes)
+        }
+        # Cleanup only links resolving to exact legacy signer executable locations.
+        $legacyTargets=@('C:\CrisSigner\CrisSigner\CrisSigner.exe','C:\CrisSigner\CrisSigner.exe')+@((Get-CrisCatalog).Exe)
+        foreach($directory in @($desktop,[Environment]::GetFolderPath('CommonDesktopDirectory'))|Select-Object -Unique){
+            if(-not $directory){continue}
+            foreach($file in @(Get-ChildItem -LiteralPath $directory -Filter *.lnk -File -ErrorAction SilentlyContinue)){
+                $old=$shell.CreateShortcut($file.FullName)
+                if($old.TargetPath -in $legacyTargets -and $file.Name -notin @('CRISSigner_IPAS.lnk','CRISSigner_IRWCMS.lnk','CRIS Signer Switcher.lnk')){Remove-Item -LiteralPath $file.FullName -Force;Write-DscEvent 'Info' 'Legacy CRIS shortcut removed' @{Shortcut=$file.FullName;Target=$old.TargetPath}}
+            }
+        }
+    }finally{[void][Runtime.InteropServices.Marshal]::ReleaseComObject($shell)}
+}
+function Invoke-CrisSetupBoth([switch]$Confirmed,[string[]]$ApprovedExistingCodes=@()){
+    if(-not $Confirmed -or -not $IsAdmin){throw 'One-click setup requires Continue approval and administrator rights.'}
+    foreach($path in @('C:\CrisSigner')+@((Get-CrisCatalog).Folder)){
+        if(Test-Path -LiteralPath $path){if((Get-Item -LiteralPath $path -Force).Attributes -band [IO.FileAttributes]::ReparsePoint){throw 'A CRIS destination is a linked folder. Setup is blocked before changes.'}}
+    }
+    $state=[ordered]@{Stage='Preflight';Finished=$false;RebootRequired=$false;Uninstalled=@();Installed=@()}
+    $journal=Join-Path $RunDir 'CRIS-setup-state.json'
+    try{
+        $script:CrisUi.Progress.Value=5
+        # Fetch and validate BOTH installers and create transforms before removing anything.
+        $plans=@{};foreach($id in 'IPAS','IRWCMS'){
+            if($script:CancelRequested){throw 'Setup cancelled before uninstall.'}
+            $state.Stage='Download / inspect '+$id;$state|ConvertTo-Json|Set-Content -LiteralPath $journal
+            $plans[$id]=Get-CrisSetupPackage $id
+        }
+        Assert-CrisCoexistence $plans.IPAS $plans.IRWCMS
+        $transforms=@{};foreach($id in 'IPAS','IRWCMS'){$transforms[$id]=New-CrisFolderTransform $plans[$id]}
+        $script:CrisUi.Progress.Value=30
+        foreach($plan in $plans.Values){if((Get-FileHash -LiteralPath $plan.Path).Hash -ne $plan.SHA256){throw 'A staged package changed before uninstall. Setup stopped without removing an existing signer.'}}
+        $existing=@(Get-CrisExistingProducts)
+        if(@($existing|Where-Object{$_.Code -notin $ApprovedExistingCodes}).Count){throw 'Existing CRIS products changed since approval. Review setup again before uninstalling.'}
+        foreach($id in 'IPAS','IRWCMS'){Stop-CrisVerified $id};Stop-CrisLegacyProcess
+        foreach($entry in $existing){
+            if($script:CancelRequested){throw 'Setup cancelled. See the setup journal for completed actions.'}
+            if(-not (@(Get-CrisExistingProducts).Code -contains $entry.Code)){continue}
+            $state.Stage='Uninstall '+$entry.Code;$state|ConvertTo-Json|Set-Content -LiteralPath $journal
+            $log=Join-Path $RunDir ('CRIS-uninstall-'+$entry.Code.Trim('{}')+'.log')
+            $code=Invoke-CrisMsiWait ('/x '+$entry.Code+' /qn /norestart REBOOT=ReallySuppress /L*v "'+$log+'"') ('Remove existing CRIS '+$entry.Code)
+            $state.Uninstalled+= $entry.Code
+            if($code -in 3010,1641){$state.RebootRequired=$true;throw 'Windows requires a restart after uninstall. Restart, then run Setup both signers again; no new signer has been installed yet.'}
+        }
+        if(@(Get-CrisExistingProducts).Count){throw 'An existing CRIS installation remains registered; installation stopped.'}
+        $script:CrisUi.Progress.Value=45
+        foreach($id in 'IPAS','IRWCMS'){
+            if($script:CancelRequested){throw 'Setup cancelled. See the setup journal for completed actions.'}
+            $plan=$plans[$id];$d=Get-CrisDefinition $id
+            if((Get-FileHash -LiteralPath $plan.Path).Hash -ne $plan.SHA256){throw 'Package bytes changed after inspection.'}
+            $state.Stage='Install '+$id;$state|ConvertTo-Json|Set-Content -LiteralPath $journal
+            $log=Join-Path $RunDir ('CRIS-'+$id+'-install.log')
+            $arguments='/i "'+$plan.Path+'" /qn /norestart REBOOT=ReallySuppress APPDIR="C:\CrisSigner\" TRANSFORMS="'+$transforms[$id]+'" /L*v "'+$log+'"'
+            $code=Invoke-CrisMsiWait $arguments ('Install '+$id)
+            if($code -eq 1605 -or -not (Test-Path -LiteralPath $d.Exe -PathType Leaf)){throw "Target executable not validated: $($d.Exe). See $log"}
+            if((Get-Item -LiteralPath $d.Exe).Length -ne (Get-CrisKnownPackages)[$id].ExeBytes){throw "Installed $id binary size does not match its inspected MSI file table."}
+            $state.Installed+=$id;if($code -in 3010,1641){$state.RebootRequired=$true}
+            $script:CrisUi.Progress.Value=$(if($id -eq 'IPAS'){65}else{80})
+        }
+        $state.Stage='Desktop shortcuts';New-CrisSignerShortcuts;Save-CrisDesktopSwitcher -Confirmed
+        $script:CrisUi.Progress.Value=90
+        if(-not $state.RebootRequired){
+            foreach($id in 'IPAS','IRWCMS'){
+                if($script:CancelRequested){throw 'Setup cancelled before runtime validation.'}
+                $state.Stage='Verify port for '+$id;Invoke-CrisSwitch $id -Confirmed
+            }
+            Invoke-CrisSwitch IPAS -Confirmed
+        }
+        $state.Stage=$(if($state.RebootRequired){'Installed - restart required; ports not yet verified'}else{'Both ports verified; IPAS running'})
+        $state.Finished=$true
+        Say ($state.Stage+'. Desktop shortcuts: CRISSigner_IPAS, CRISSigner_IRWCMS, CRIS Signer Switcher.') 'Green'
+    }finally{$state|ConvertTo-Json -Depth 5|Set-Content -LiteralPath $journal;Write-DscEvent 'Info' 'CRIS setup final state' $state}
+}
+
+function Get-CrisCatalog {
+    @(
+        [pscustomobject]@{Id='IPAS';Name='IPAS CRIS Signer';Port=2068;Folder='C:\CrisSigner\CrisSigner_IPAS';Exe='C:\CrisSigner\CrisSigner_IPAS\CrisSigner.exe';Url='https://drive.usercontent.google.com/download?id=1tFJBijgNTN5Pb02-V5SLqdguKAiujBfw&export=download&confirm=t';Package='IPAS.zip'},
+        [pscustomobject]@{Id='IRWCMS';Name='IRWCMS / IRCEP CRIS Signer';Port=2039;Folder='C:\CrisSigner\CrisSigner_IRWCMS';Exe='C:\CrisSigner\CrisSigner_IRWCMS\CrisSigner.exe';Url='https://ircep.gov.in/IRWCMS/wpmsp2/HelpDocs/CrisSigner.msi';Package='IRWCMS.msi'}
+    )
+}
+function Get-CrisDefinition([string]$Id){$d=Get-CrisCatalog|Where-Object Id -eq $Id;if(-not $d){throw 'Unknown CRIS signer.'};return $d}
+function Get-CrisProcesses([string]$Exe){
+    # Never identify Java or services by generic process name alone.
+    @(Get-CimInstance Win32_Process -Filter "Name='CrisSigner.exe'" -ErrorAction Stop|Where-Object{$_.ExecutablePath -and [string]::Equals($_.ExecutablePath,$Exe,[StringComparison]::OrdinalIgnoreCase)})
+}
+function Get-CrisPortPids([int]$Port){
+    # netstat fallback is read-only and avoids treating 'no connections' as an exception.
+    @(ConvertFrom-NetstatText (netstat -ano -p tcp) $Port|Where-Object State -eq 'LISTENING'|ForEach-Object{[int]$_.Pid}|Sort-Object -Unique)
+}
+function Get-CrisState([string]$Id){
+    $d=Get-CrisDefinition $Id;$processes=@(Get-CrisProcesses $d.Exe);$owners=@(Get-CrisPortPids $d.Port)
+    $ownIds=@($processes|ForEach-Object{[int]$_.ProcessId})
+    $unknown=@($owners|Where-Object{$ownIds -notcontains $_})
+    $state='STOPPED';$color='Firebrick';$detail='No signer process or listening port.'
+    if($unknown.Count){$state='CONFLICT / UNVERIFIED';$color='DarkOrange';$detail="Port $($d.Port) belongs to PID(s) $($unknown -join ', '). No automatic termination."}
+    elseif($owners.Count -and $processes.Count){$state='RUNNING';$color='ForestGreen';$detail="Verified executable owns port $($d.Port)."}
+    elseif($processes.Count){$state='STARTING / NO LISTENER';$color='DarkOrange';$detail="Process exists; port $($d.Port) is not listening."}
+    elseif(-not (Test-Path -LiteralPath $d.Exe -PathType Leaf)){$state='NOT INSTALLED AT TARGET';$color='Firebrick';$detail=$d.Exe}
+    return [pscustomobject]@{Id=$Id;Definition=$d;State=$state;Color=$color;Detail=$detail;Processes=$processes;Owners=$owners;Conflict=($unknown.Count -gt 0)}
+}
+function Stop-CrisVerified([string]$Id){
+    if(-not $IsAdmin){throw 'Administrator approval is required.'}
+    $d=Get-CrisDefinition $Id
+    foreach($p in @(Get-CrisProcesses $d.Exe)){
+        # Refuse service-backed processes: service control needs a verified service identity.
+        if(@(Get-CimInstance Win32_Service -Filter "ProcessId=$($p.ProcessId)" -ErrorAction Stop).Count){throw 'Signer is service-backed. Use the supported service control; it will not be force-killed.'}
+        $current=Get-CimInstance Win32_Process -Filter "ProcessId=$($p.ProcessId)" -ErrorAction Stop
+        if(-not $current -or -not [string]::Equals($current.ExecutablePath,$d.Exe,[StringComparison]::OrdinalIgnoreCase)){throw 'Process identity changed; stop cancelled.'}
+        $native=Get-Process -Id $p.ProcessId -ErrorAction Stop
+        try{[void]$native.CloseMainWindow();if(-not $native.WaitForExit(3000)){$native.Kill();if(-not $native.WaitForExit(5000)){throw 'Signer did not stop.'}}}finally{$native.Dispose()}
+        Write-DscEvent 'Info' 'CRIS signer stopped' @{Signer=$Id;Pid=$p.ProcessId;Exe=$d.Exe}
+    }
+    if(@(Get-CrisProcesses $d.Exe).Count){throw 'Signer still running; switch was stopped.'}
+}
+function Invoke-CrisSwitch([string]$Id,[switch]$Confirmed){
+    if(-not $Confirmed -or -not $IsAdmin){throw 'Confirm switching in an administrator session first.'}
+    $d=Get-CrisDefinition $Id
+    if(-not (Test-Path -LiteralPath $d.Exe -PathType Leaf)){throw "Install and validate this signer first: $($d.Exe)"}
+    $target=Get-CrisState $Id
+    if($target.Conflict){throw $target.Detail}
+    foreach($other in @(Get-CrisCatalog|Where-Object Id -ne $Id)){
+        if($script:CancelRequested){return}
+        Stop-CrisVerified $other.Id
+        $deadline=[DateTime]::UtcNow.AddSeconds(8)
+        while(@(Get-CrisPortPids $other.Port).Count){
+            if([DateTime]::UtcNow -ge $deadline){throw "Port $($other.Port) remains busy. No unrelated process was stopped."}
+            if($script:CancelRequested){return};Start-Sleep -Milliseconds 200;Update-Ui
+        }
+    }
+    if($script:CancelRequested){return}
+    $target=Get-CrisState $Id
+    if($target.Conflict){throw $target.Detail}
+    if(-not $target.Processes.Count){Start-Process -FilePath $d.Exe -WorkingDirectory $d.Folder -ErrorAction Stop|Out-Null}
+    $deadline=[DateTime]::UtcNow.AddSeconds(25)
+    do{
+        $target=Get-CrisState $Id
+        if($target.State -eq 'RUNNING'){Write-DscEvent 'Info' 'CRIS switch verified' @{Signer=$Id;Port=$d.Port};return}
+        if($target.Conflict){throw $target.Detail}
+        if($script:CancelRequested){return};Start-Sleep -Milliseconds 350;Update-Ui
+    }while([DateTime]::UtcNow -lt $deadline)
+    throw "Started $Id but port $($d.Port) was not verified within 25 seconds. Review logs; no success was assumed."
+}
+function Get-CrisMsiPlan([string]$Path,[string]$Id){
+    $d=Get-CrisDefinition $Id;$resolved=(Resolve-Path -LiteralPath $Path -ErrorAction Stop).Path
+    if([IO.Path]::GetExtension($resolved) -ne '.msi'){throw 'Select an MSI, or extract the official ZIP and select its MSI. EXE silent switches are not assumed.'}
+    $installer=$null;$db=$null;$view=$null
+    try{
+        $installer=New-Object -ComObject WindowsInstaller.Installer
+        $db=$installer.OpenDatabase($resolved,0)
+        $properties=@{};$view=$db.OpenView('SELECT `Property`, `Value` FROM `Property`');[void]$view.Execute()
+        while($record=$view.Fetch()){$properties[$record.StringData(1)]=$record.StringData(2);[void][Runtime.InteropServices.Marshal]::ReleaseComObject($record)}
+        [void]$view.Close();[void][Runtime.InteropServices.Marshal]::ReleaseComObject($view);$view=$null
+        if($properties.ProductName -notmatch '(?i)cris\s*signer' -or $properties.ProductCode -notmatch '^\{[0-9A-Fa-f-]{36}\}$'){throw 'MSI product identity is not a CRIS Signer.'}
+        $directory=$null;$view=$db.OpenView('SELECT `Directory` FROM `Directory`');[void]$view.Execute()
+        while($record=$view.Fetch()){$name=$record.StringData(1);if($name -cin @('INSTALLDIR','INSTALLFOLDER','APPLICATIONFOLDER','APPDIR')){$directory=$name};[void][Runtime.InteropServices.Marshal]::ReleaseComObject($record)}
+        if(-not $directory){throw 'No recognized public install-directory property. Side-by-side silent installation is not enabled for this MSI.'}
+        $signature=Get-AuthenticodeSignature -LiteralPath $resolved
+        $hash=(Get-FileHash -LiteralPath $resolved -Algorithm SHA256).Hash
+        $known=Test-CrisKnownPackage $Id $hash $properties.ProductCode $properties.UpgradeCode
+        if($signature.Status -ne 'Valid' -and -not $known){throw "MSI signature is $($signature.Status), and its bytes are not one of the inspected user-approved copies. Installation is blocked."}
+        $publisher=if($signature.SignerCertificate){$signature.SignerCertificate.Subject}else{'Unsigned - exact inspected copy; source/hash approval required'}
+        return [pscustomobject]@{Id=$Id;Path=$resolved;ProductCode=$properties.ProductCode;UpgradeCode=$properties.UpgradeCode;Version=$properties.ProductVersion;ProductName=$properties.ProductName;Directory=$directory;Target=$d.Folder;SHA256=$hash;Publisher=$publisher;NeedsFolderTransform=$known}
+    }finally{
+        if($view){try{[void]$view.Close()}catch{};[void][Runtime.InteropServices.Marshal]::ReleaseComObject($view)}
+        if($db){[void][Runtime.InteropServices.Marshal]::ReleaseComObject($db)}
+        if($installer){[void][Runtime.InteropServices.Marshal]::ReleaseComObject($installer)}
+    }
+}
+function Assert-CrisCoexistence($Plan,$Other){
+    if(-not $Other){throw 'Inspect BOTH installer packages before installing; their MSI identities must be compared.'}
+    if($Plan.Id -eq $Other.Id){throw 'Select the other signer package for comparison.'}
+    if($Plan.ProductCode -eq $Other.ProductCode -or ($Plan.UpgradeCode -and $Plan.UpgradeCode -eq $Other.UpgradeCode)){
+        throw 'Both packages share a product/upgrade identity. Separate folders alone cannot guarantee coexistence. Installation is blocked to avoid overwriting the other signer.'
+    }
+}
+function Install-CrisPlanned($Plan,$Other,[switch]$Confirmed){
+    if(-not $Confirmed -or -not $IsAdmin){throw 'Explicit administrator installation approval is required.'}
+    Assert-CrisCoexistence $Plan $Other
+    if($Plan.NeedsFolderTransform){throw 'Use Setup both signers automatically for these packages so their nested directory layout is corrected.'}
+    $fresh=Get-CrisMsiPlan $Plan.Path $Plan.Id
+    if($fresh.SHA256 -ne $Plan.SHA256 -or $fresh.Directory -ne $Plan.Directory -or $fresh.ProductCode -ne $Plan.ProductCode){throw 'Installer changed since inspection. Inspect again.'}
+    $d=Get-CrisDefinition $Plan.Id
+    foreach($entry in Get-UninstallEntries){
+        if($entry.PSChildName -eq $Plan.ProductCode -and (-not $entry.InstallLocation -or $entry.InstallLocation.TrimEnd('\') -ine $d.Folder.TrimEnd('\'))){throw 'This product is already registered at another or unknown location. Vendor-supported migration is required before relocation.'}
+    }
+    $msilog=Join-Path $RunDir ('CRIS-'+$Plan.Id+'-install.log')
+    $crisArguments='/i "'+$Plan.Path+'" /qn /norestart '+$Plan.Directory+'="'+$d.Folder+'" /L*v "'+$msilog+'"'
+    Write-DscEvent 'Info' 'CRIS installer approved' @{Signer=$Plan.Id;SHA256=$Plan.SHA256;Target=$d.Folder;Publisher=$Plan.Publisher;Log=$msilog}
+    # Installer cancellation is between operations; never kill Windows Installer on a timeout.
+    $process=Start-Process -FilePath "$env:SystemRoot\System32\msiexec.exe" -ArgumentList $crisArguments -PassThru -ErrorAction Stop
+    try{while(-not $process.WaitForExit(250)){Update-Ui};$code=$process.ExitCode}finally{$process.Dispose()}
+    if($code -notin 0,3010,1641){throw "Installer exit $code. See $msilog"}
+    if(-not (Test-Path -LiteralPath $d.Exe -PathType Leaf)){throw "Installer finished, but $($d.Exe) does not exist. Separate-folder installation was not validated; no shortcut was changed."}
+    Write-DscEvent 'Info' 'CRIS installation path verified' @{Signer=$Plan.Id;Exe=$d.Exe;ExitCode=$code;RebootRequired=($code -in 3010,1641)}
+    Say "Installed $($d.Name). Exit $code; reboot required: $($code -in 3010,1641). Log: $msilog" 'Green'
+}
+function Save-CrisDesktopSwitcher([switch]$Confirmed){
+    if(-not $Confirmed){throw 'Approve desktop switcher creation first.'}
+    $copy=Save-CrisRuntimeSource
+    $folder=Split-Path -Parent $copy
+    $shell=New-Object -ComObject WScript.Shell
+    try{
+        $shortcut=Join-Path ([Environment]::GetFolderPath('Desktop')) 'CRIS Signer Switcher.lnk'
+        $link=$shell.CreateShortcut($shortcut);$link.TargetPath="$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe";$link.Arguments='-NoProfile -STA -File "'+$copy+'" -Mode crisgui';$link.WorkingDirectory=$folder;$link.Save()
+        # Shell Link RunAsUser flag makes Windows request UAC on launch.
+        $bytes=[IO.File]::ReadAllBytes($shortcut);if($bytes.Length -lt 76){throw 'Invalid shortcut header.'};$bytes[21]=$bytes[21] -bor 0x20;[IO.File]::WriteAllBytes($shortcut,$bytes)
+    }finally{[void][Runtime.InteropServices.Marshal]::ReleaseComObject($shell)}
+    Write-DscEvent 'Info' 'CRIS desktop switcher created' @{Path=$shortcut}
+    Say "Desktop shortcut created: $shortcut. It requests UAC when opened." 'Green'
+}
+function Start-CrisGui {
+    Add-Type -AssemblyName System.Windows.Forms,System.Drawing
+    $script:CrisUi=@{Busy=$false;Plans=@{};Rows=@{}};$u=$script:CrisUi
+    $f=New-Object Windows.Forms.Form;$u.Form=$f;$f.Text='CRIS Signer Switcher & Installer';$f.Size=New-Object Drawing.Size(980,730);$f.MinimumSize=New-Object Drawing.Size(850,600);$f.StartPosition='CenterScreen';$f.Font=New-Object Drawing.Font('Segoe UI',10)
+    $root=New-Object Windows.Forms.TableLayoutPanel;$root.Dock='Fill';$root.ColumnCount=1;$root.RowCount=4;$root.Padding=New-Object Windows.Forms.Padding(12)
+    [void]$root.RowStyles.Add((New-Object Windows.Forms.RowStyle('Percent',100)));foreach($h in @(35,110,40)){[void]$root.RowStyles.Add((New-Object Windows.Forms.RowStyle('Absolute',$h)))};$f.Controls.Add($root)
+    $tabs=New-Object Windows.Forms.TabControl;$tabs.Dock='Fill';$root.Controls.Add($tabs,0,0)
+    $switchPage=New-Object Windows.Forms.TabPage;$switchPage.Text='Switcher - live status';$tabs.TabPages.Add($switchPage)
+    $installPage=New-Object Windows.Forms.TabPage;$installPage.Text='Installer / progress';$tabs.TabPages.Add($installPage)
+    $switchLayout=New-Object Windows.Forms.FlowLayoutPanel;$switchLayout.Dock='Fill';$switchLayout.FlowDirection='TopDown';$switchLayout.WrapContents=$false;$switchLayout.AutoScroll=$true;$switchPage.Controls.Add($switchLayout)
+    $hint=New-Object Windows.Forms.Label;$hint.Width=830;$hint.Height=48;$hint.Text='Green: exact signer executable owns its port. Red: stopped/missing. Amber: starting or conflict. Switching stops only the identified other signer. Service-backed signers require vendor service controls.';$switchLayout.Controls.Add($hint)
+    foreach($d in Get-CrisCatalog){
+        $panel=New-Object Windows.Forms.FlowLayoutPanel;$panel.Width=830;$panel.Height=112
+        $label=New-Object Windows.Forms.Label;$label.Width=810;$label.Height=28;$label.Text=$d.Name+' - checking...';$u.Rows[$d.Id]=$label;$panel.Controls.Add($label)
+        $path=New-Object Windows.Forms.Label;$path.Width=810;$path.Height=24;$path.Text=$d.Exe+' | Port '+$d.Port;$panel.Controls.Add($path)
+        $start=New-Object Windows.Forms.Button;$start.Text='Start / Switch to '+$d.Id;$start.Tag=$d.Id;$start.AutoSize=$true
+        $stop=New-Object Windows.Forms.Button;$stop.Text='Stop '+$d.Id;$stop.Tag=$d.Id;$stop.AutoSize=$true
+        $start.Add_Click({param($sender,$eventArgs)$id=[string]$sender.Tag;Invoke-CrisUiWork {if(Confirm-CrisUi "Stop the other identified signer, then start $id? Unrelated processes will not be terminated." 'Switch CRIS signer'){Invoke-CrisSwitch $id -Confirmed}}})
+        $stop.Add_Click({param($sender,$eventArgs)$id=[string]$sender.Tag;Invoke-CrisUiWork {if(Confirm-CrisUi "Stop the identified $id signer process?" 'Stop CRIS signer'){Stop-CrisVerified $id}}})
+        $panel.Controls.AddRange(@($start,$stop));$switchLayout.Controls.Add($panel)
+    }
+    $actions=New-Object Windows.Forms.FlowLayoutPanel;$actions.Width=830;$actions.Height=45
+    foreach($spec in @(@('Refresh','Refresh status'),@('Admin','Reopen with UAC'),@('Desktop','Create desktop switcher'))){$b=New-Object Windows.Forms.Button;$b.Text=$spec[1];$b.AutoSize=$true;$u[$spec[0]]=$b;$actions.Controls.Add($b)};$switchLayout.Controls.Add($actions)
+    $installer=New-Object Windows.Forms.FlowLayoutPanel;$installer.Dock='Fill';$installer.FlowDirection='TopDown';$installer.WrapContents=$false;$installer.AutoScroll=$true;$installPage.Controls.Add($installer)
+    $instructions=New-Object Windows.Forms.Label;$instructions.Width=810;$instructions.Height=90;$instructions.Text='Click Setup both signers automatically. Approve UAC and one setup review. Both inspected packages are downloaded first; existing MSI CRIS Signer installations are removed, both signers install into separate folders, and all three desktop shortcuts are created. Unsigned packages are accepted only at the inspected SHA256 hashes. Existing unrelated applications and shortcuts are preserved.';$installer.Controls.Add($instructions)
+    $u.Setup=New-Object Windows.Forms.Button;$u.Setup.Text='Setup BOTH signers automatically (Administrator)';$u.Setup.Width=660;$u.Setup.Height=44;$u.Setup.BackColor=[Drawing.Color]::LightSteelBlue;$installer.Controls.Add($u.Setup)
+    $targets=New-Object Windows.Forms.Label;$targets.Width=810;$targets.Height=72;$targets.Text="IPAS: C:\CrisSigner\CrisSigner_IPAS\CrisSigner.exe - port 2068`r`nIRWCMS/IRCEP: C:\CrisSigner\CrisSigner_IRWCMS\CrisSigner.exe - port 2039`r`nDesktop: CRISSigner_IPAS, CRISSigner_IRWCMS, CRIS Signer Switcher (UAC).";$installer.Controls.Add($targets)
+    $u.Advanced=New-Object Windows.Forms.CheckBox;$u.Advanced.Text='Advanced: inspect individual packages';$u.Advanced.AutoSize=$true;$installer.Controls.Add($u.Advanced)
+    $u.Choice=New-Object Windows.Forms.ComboBox;$u.Choice.DropDownStyle='DropDownList';$u.Choice.Width=400;foreach($d in Get-CrisCatalog){[void]$u.Choice.Items.Add($d.Id)};$u.Choice.SelectedIndex=0;$installer.Controls.Add($u.Choice)
+    $u.Msi=New-Object Windows.Forms.TextBox;$u.Msi.Width=810;$installer.Controls.Add($u.Msi)
+    $ib=New-Object Windows.Forms.FlowLayoutPanel;$ib.Width=810;$ib.Height=45
+    foreach($spec in @(@('Download','Download package...'),@('Browse','Select local MSI...'),@('Inspect','Inspect MSI'),@('Install','Install selected signer...'))){$b=New-Object Windows.Forms.Button;$b.Text=$spec[1];$b.AutoSize=$true;$u[$spec[0]]=$b;$ib.Controls.Add($b)};$installer.Controls.Add($ib)
+    $u.PlanText=New-Object Windows.Forms.TextBox;$u.PlanText.Multiline=$true;$u.PlanText.ReadOnly=$true;$u.PlanText.ScrollBars='Vertical';$u.PlanText.Width=810;$u.PlanText.Height=150;$installer.Controls.Add($u.PlanText)
+    $u.AdvancedControls=@($u.Choice,$u.Msi,$ib,$u.PlanText);foreach($control in $u.AdvancedControls){$control.Visible=$false}
+    $u.Advanced.Add_CheckedChanged({foreach($control in $script:CrisUi.AdvancedControls){$control.Visible=$script:CrisUi.Advanced.Checked}})
+    $u.Progress=New-Object Windows.Forms.ProgressBar;$u.Progress.Dock='Fill';$u.Progress.Style='Continuous';$root.Controls.Add($u.Progress,0,1)
+    $u.Log=New-Object Windows.Forms.TextBox;$u.Log.Multiline=$true;$u.Log.ReadOnly=$true;$u.Log.ScrollBars='Vertical';$u.Log.Dock='Fill';$u.Log.Text="Session log: $script:DscSessionDirectory`r`n";$root.Controls.Add($u.Log,0,2)
+    $bottom=New-Object Windows.Forms.FlowLayoutPanel;$bottom.Dock='Fill';$u.Cancel=New-Object Windows.Forms.Button;$u.Cancel.Text='Cancel remaining';$u.Cancel.AutoSize=$true;$u.Cancel.Enabled=$false;$u.Close=New-Object Windows.Forms.Button;$u.Close.Text='Close';$u.Status=New-Object Windows.Forms.Label;$u.Status.Width=620;$u.Status.Height=32;$bottom.Controls.AddRange(@($u.Cancel,$u.Close,$u.Status));$root.Controls.Add($bottom,0,3)
+    function Confirm-CrisUi($message,$title){
+        # Reuse the Continue/Cancel dialog without leaking the Option 3 owner.
+        $saved=$script:OtherUi;$script:OtherUi=@{Form=$script:CrisUi.Form};try{return (Show-OtherContinueDialog $message $title)}finally{$script:OtherUi=$saved}
+    }
+    function Refresh-CrisUi {
+        foreach($d in Get-CrisCatalog){try{$state=Get-CrisState $d.Id;$script:CrisUi.Rows[$d.Id].Text=$d.Name+': '+$state.State+' - '+$state.Detail;$script:CrisUi.Rows[$d.Id].ForeColor=[Drawing.Color]::FromName($state.Color)}catch{$script:CrisUi.Rows[$d.Id].Text=$d.Name+': UNVERIFIED - '+$_.Exception.Message;$script:CrisUi.Rows[$d.Id].ForeColor=[Drawing.Color]::DarkOrange}}
+    }
+    function Invoke-CrisUiWork([scriptblock]$work){
+        $c=$script:CrisUi;if($c.Busy){return};$c.Busy=$true;$script:CancelRequested=$false;$c.Cancel.Enabled=$true;$c.Close.Enabled=$false;$c.Progress.Value=10
+        try{& $work;$c.Progress.Value=100;$c.Status.Text=$(if($script:CancelRequested){'Cancelled after current operation.'}else{'Operation finished; see log and verified status.'})}
+        catch{Write-DscError $_ 'CRIS GUI';$c.Log.AppendText('ERROR: '+$_.Exception.Message+"`r`n");$c.Status.Text='Action failed / blocked. See log.'}
+        finally{$c.Busy=$false;$c.Cancel.Enabled=$false;$c.Close.Enabled=$true;Refresh-CrisUi;Save-DscSession $Results}
+    }
+    $savedUi=$script:Ui;$savedLog=$script:UiLog;$savedStatus=$script:UiStatus;$script:Ui=$f
+    $script:UiLog={param($message,$color)$script:CrisUi.Log.AppendText($message+"`r`n")}
+    $script:UiStatus={param($message,$target)$script:CrisUi.Status.Text=$message;[Windows.Forms.Application]::DoEvents()}
+    $u.Refresh.Add_Click({if(-not $script:CrisUi.Busy){Refresh-CrisUi}})
+    $u.Setup.Add_Click({Invoke-CrisUiWork {
+        if(-not $IsAdmin){
+            $local=Save-CrisRuntimeSource
+            $arguments='-NoProfile -STA -File "'+$local+'" -Mode crisinstall'
+            Start-Process -FilePath "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -ArgumentList $arguments -Verb RunAs -ErrorAction Stop|Out-Null
+            Say 'Approve UAC; setup continues in the new administrator window.';return
+        }
+        $existing=@(Get-CrisExistingProducts)
+        $inventory=if($existing.Count){($existing|ForEach-Object{$_.Name+' '+$_.Version+' '+$_.Code+' '+$_.Location}) -join "`r`n"}else{'None registered.'}
+        $message="Set up BOTH CRIS signers automatically?`r`n`r`nExisting CRIS MSI products to remove:`r`n$inventory`r`n`r`nDownload and verify both inspected packages FIRST. These vendor/source copies are unsigned; exact SHA256 pins are required. Then stop identified CRIS processes, silently uninstall listed CRIS products, install IPAS and IRWCMS into separate folders, create CRISSigner_IPAS / CRISSigner_IRWCMS / CRIS Signer Switcher desktop shortcuts, and remove only desktop links targeting the legacy CRIS executable. Verify ports 2068 and 2039 and leave IPAS active.`r`n`r`nCancellation waits for any active MSI. A restart may be required. Existing CRIS configurations can be replaced during reinstall. Continue?"
+        if(Confirm-CrisUi $message 'Review automatic CRIS setup'){Invoke-CrisSetupBoth -Confirmed -ApprovedExistingCodes @($existing.Code)}
+    }})
+
+    $u.Admin.Add_Click({Invoke-CrisUiWork {
+        if($IsAdmin){Say 'Already running as administrator.';return}
+        if(-not $NativeSourcePath -or -not (Test-Path -LiteralPath $NativeSourcePath)){throw 'Run the local install.ps1 or extracted website bundle to reopen this exact version with UAC.'}
+        if(Confirm-CrisUi 'Reopen this local troubleshooter as administrator? Approve the Windows UAC prompt.' 'Administrator approval'){
+            $crisArguments='-NoProfile -STA -File "'+$NativeSourcePath+'" -Mode crisgui';Start-Process -FilePath "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -ArgumentList $crisArguments -Verb RunAs -ErrorAction Stop|Out-Null
+        }
+    }})
+    $u.Desktop.Add_Click({Invoke-CrisUiWork {if(Confirm-CrisUi 'Create a desktop switcher shortcut and a local copy of this script? The shortcut requests UAC. Existing signer shortcuts are preserved.' 'Desktop switcher'){Save-CrisDesktopSwitcher -Confirmed}}})
+    $u.Browse.Add_Click({if($script:CrisUi.Busy){return};$pick=New-Object Windows.Forms.OpenFileDialog;$pick.Filter='Windows Installer (*.msi)|*.msi';try{if($pick.ShowDialog($script:CrisUi.Form) -eq 'OK'){$script:CrisUi.Msi.Text=$pick.FileName}}finally{$pick.Dispose()}})
+    $u.Inspect.Add_Click({Invoke-CrisUiWork {
+        $id=[string]$script:CrisUi.Choice.SelectedItem;$plan=Get-CrisMsiPlan $script:CrisUi.Msi.Text $id;$script:CrisUi.Plans[$id]=$plan
+        $script:CrisUi.PlanText.Text=($script:CrisUi.Plans.Values|Format-List Id,ProductName,Version,ProductCode,UpgradeCode,Directory,Target,Publisher,SHA256|Out-String)
+        Say "Inspected $id MSI; no installer was executed. Select and inspect the other package before installation."
+    }})
+    $u.Download.Add_Click({Invoke-CrisUiWork {
+        $d=Get-CrisDefinition ([string]$script:CrisUi.Choice.SelectedItem)
+        if(-not (Confirm-CrisUi "Download $($d.Name) from:`r`n$($d.Url)`r`nThe package will be saved for inspection only. No installer will run." 'Download CRIS package')){return}
+        $plan=Get-CrisSetupPackage $d.Id
+        $script:CrisUi.Msi.Text=$plan.Path
+        Say "Saved and inspected $($d.Id) package at $($plan.Path). No installer has been run."
+
+    }})
+    $u.Install.Add_Click({Invoke-CrisUiWork {
+        $id=[string]$script:CrisUi.Choice.SelectedItem;$otherId=if($id -eq 'IPAS'){'IRWCMS'}else{'IPAS'};$plan=$script:CrisUi.Plans[$id];$other=$script:CrisUi.Plans[$otherId]
+        if(-not $plan){throw 'Inspect the selected MSI first.'};Assert-CrisCoexistence $plan $other
+        if(Confirm-CrisUi "Install $id silently into $($plan.Target)?`r`nPublisher: $($plan.Publisher)`r`nSHA256: $($plan.SHA256)`r`nA reboot may be required. Cancellation waits for the installer to finish. Existing shortcuts are preserved." 'Review CRIS installation'){Install-CrisPlanned $plan $other -Confirmed}
+    }})
+    $u.Cancel.Add_Click({$script:CancelRequested=$true;$script:CrisUi.Status.Text='Cancellation requested; an active MSI must finish.'})
+    $u.Close.Add_Click({$script:CrisUi.Form.Close()});$f.Add_FormClosing({param($sender,$e)if($script:CrisUi.Busy){$e.Cancel=$true}})
+    $u.Timer=New-Object Windows.Forms.Timer;$u.Timer.Interval=3000;$u.Timer.Add_Tick({if(-not $script:CrisUi.Busy){Refresh-CrisUi}})
+    $f.Add_Shown({Refresh-CrisUi;$script:CrisUi.Timer.Start();$script:CrisUi.Status.Text=$(if($IsAdmin){'Administrator session ready.'}else{'Read-only status. Click Reopen with UAC for changes.'});if($RequestedMode -eq 'crisinstall' -and $IsAdmin){$script:CrisUi.Setup.PerformClick()}})
+    try{[void]$f.ShowDialog()}finally{$u.Timer.Stop();$u.Timer.Dispose();$script:Ui=$savedUi;$script:UiLog=$savedLog;$script:UiStatus=$savedStatus;$f.Dispose();$script:CrisUi=$null}
+}
+
+    if ($RequestedMode -in 'crisgui','crisinstall') { Start-CrisGui } elseif ($RequestedMode -eq 'othergui') { Start-OtherGui } elseif ($Mode -eq 'gui') { Start-Gui } else { Start-Console }
     } finally { Save-DscSession $Results }
 }
 function Invoke-DscSelection([string]$Selection) {
@@ -3153,7 +3578,7 @@ function Show-DscMenu {
     Write-Host ''
     Write-Host $rule -ForegroundColor Cyan
     Write-MenuRow 'Digital Signing Service 4.1.8 Troubleshooter ( for E-Office )' Yellow -Bold
-    Write-MenuRow 'Native PowerShell | Build 2026.11.04.1' White
+    Write-MenuRow 'Native PowerShell | Build 2026.11.04.2' White
     Write-MenuRow
     Write-MenuRow 'Developed by Girish Tiwari' Gray
     Write-MenuRow 'Senior Information Technology, Certified Microsoft Engineer' Gray
@@ -3167,7 +3592,9 @@ function Show-DscMenu {
     Write-MenuRow
     Write-MenuRow 'Option 4. Refresh menu' Yellow
     Write-MenuRow
-    Write-MenuRow 'Option 5. Exit' Gray
+    Write-MenuRow 'Option 5. CRIS Signer Switcher & Installer' Cyan
+    Write-MenuRow
+    Write-MenuRow 'Option 6. Exit' Gray
     Write-MenuRow
     Write-Host $rule -ForegroundColor Cyan
     Write-MenuRow 'Checks run first. Review and select repairs before applying.' White
@@ -3180,16 +3607,17 @@ function Show-DscMenu {
 if ($Mode -ne 'menu') { Invoke-DscSelection $Mode; return }
 while ($true) {
     Show-DscMenu
-    $menuInstruction = 'Select any one option to proceed further (1-5):'
+    $menuInstruction = 'Select any one option to proceed further (1-6):'
     Write-Host $menuInstruction -ForegroundColor Black -BackgroundColor Yellow
-    $choice = Read-Host 'Choose 1-5'
+    $choice = Read-Host 'Choose 1-6'
     switch ($choice) {
         '1' { Invoke-DscSelection 'console' }
         '2' { Invoke-DscSelection 'gui' }
         '3' { Invoke-DscSelection 'othergui' }
         '4' { continue }
-        '5' { return }
-        default { Write-Host 'Enter a number from 1 to 5.' -ForegroundColor Yellow }
+        '5' { Invoke-DscSelection 'crisgui' }
+        '6' { return }
+        default { Write-Host 'Enter a number from 1 to 6.' -ForegroundColor Yellow }
     }
 }
 } catch {

@@ -11,15 +11,12 @@ const inlineBehavior=html.match(/<script id="toolkit-behavior">([\s\S]*?)<\/scri
 if(inlineBehavior){vm.runInNewContext(inlineBehavior[1],context)}else{vm.runInNewContext(fs.readFileSync(path.join(root,'launcher-data.js'),'utf8'),context);vm.runInNewContext(fs.readFileSync(path.join(root,'app.js'),'utf8'),context)}
 (async()=>{
 check(!html.includes('YOUR SESSION CHECKLIST'),'session checklist removed');
-check(html.includes('STANDBY METHOD')&&ids['standby-command'].textContent.includes('SecurityProtocol'),'standby steps and complete command are present');
-check(launchers.length===2,'remaining launcher links use download handler');
-for(const launcher of launchers){let prevented=false;await launcher.fire('click',{preventDefault(){prevented=true}});check(prevented&&created.download==='Start-DSS-Online.cmd'&&created.clicked,'launcher saves CMD instead of navigating to source');}
-check(blob.type==='application/octet-stream','binary-download MIME type used');
-const cmd=fs.readFileSync(path.join(root,'downloads/Start-DSS-Online.cmd'),'utf8').replace(/\r?\n/g,'\r\n');check(await blob.text()===cmd,'downloaded launcher matches real CMD exactly');
+check(html.includes('TROUBLESHOOTING METHOD')&&html.includes('Follow the steps below')&&ids['standby-command'].textContent.includes('SecurityProtocol'),'primary troubleshooting instructions and command are present');
+check(launchers.length===0&&!html.includes('id="launcher-download"'),'launcher download actions removed');
+check(!html.includes('window.DSS_LAUNCHER'),'launcher binary payload removed from published page');
+check(ids['standby-command'].textContent.trim().split(/\r?\n/).length===2,'manual command stays exactly two lines');
 await ids['copy-command'].fire('click');check(copied.includes('-bor 3072')&&copied.includes('| iex'),'copy action includes both command lines');
 context.navigator.clipboard.writeText=async()=>{throw Error('Clipboard denied')};await ids['copy-command'].fire('click');check(selected,'clipboard denial offers manual selection');
-context.window.DSS_LAUNCHER='';await launchers[0].fire('click',{preventDefault(){}});check(ids['standby-command'].scrolled&&ids.toast.textContent.includes('standby'),'unavailable launcher directs user to fallback');
-
 const idList=[...html.matchAll(/\bid="([^"]+)"/g)].map(m=>m[1]);check(new Set(idList).size===idList.length,'HTML IDs unique');
 for(const m of html.matchAll(/(?:href|src)="([^"]+)"/g)){if(!m[1].startsWith('#')&&!m[1].startsWith('https://'))assert.ok(fs.existsSync(path.join(root,m[1])),m[1]);}check(true,'local asset links resolve');
 check(!html.includes('aria-label="Main navigation"'),'crossed-out top navigation removed');

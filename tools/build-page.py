@@ -3,7 +3,7 @@ import base64,hashlib,re
 root=Path(__file__).resolve().parent.parent
 template=(root/'tools/index.template.html').read_text(encoding='utf-8-sig')
 css='\n'.join((root/name).read_text(encoding='utf-8-sig') for name in ['styles.css','compact.css']).replace('\r\n','\n')
-js='\n'.join((root/name).read_text(encoding='utf-8-sig') for name in ['launcher-data.js','app.js']).replace('\r\n','\n')
+js='\n'.join((root/name).read_text(encoding='utf-8-sig') for name in ['app.js']).replace('\r\n','\n')
 assert '</style' not in css.lower() and '</script' not in js.lower()
 def digest(text):return base64.b64encode(hashlib.sha256(text.encode('utf-8')).digest()).decode('ascii')
 style_hash=digest(css);script_hash=digest(js)
