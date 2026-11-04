@@ -132,3 +132,14 @@ body.comfortable-view{font-size:17px;line-height:1.6;max-width:1600px}.comfortab
 @keyframes method-green{0%,28%{background:#79d894;box-shadow:0 0 0 3px #79d89455}35%,100%{background:#d9f2df;box-shadow:none}}@keyframes method-yellow{0%,28%{background:#ffd449;box-shadow:0 0 0 3px #ffd44955}35%,100%{background:#ffe797;box-shadow:none}}@keyframes method-pale{0%,28%{background:#fff0a6;box-shadow:0 0 0 3px #fff0a655}35%,100%{background:#fff9d6;box-shadow:none}}
 .standby-card .steps li:nth-child(1) p{animation:method-green 6s ease-in-out infinite}.standby-card .steps li:nth-child(2) p{animation:method-yellow 6s ease-in-out 2s infinite}.standby-card .steps li:nth-child(3) p{animation:method-pale 6s ease-in-out 4s infinite}
 @media(prefers-reduced-motion:reduce){.standby-card .steps li>span,.standby-sequence>span,.standby-card .steps p{animation:none!important}}
+
+/* Emphasize the GUI choice, resource buttons and developer credit. */
+.standby-card .steps .preferred-option{display:inline-block;background:#175bb8;color:#fff;border:1px solid #0d4290;border-radius:3px;padding:3px 7px;font-size:14px;font-weight:800;box-shadow:0 2px 5px #153b7026}
+.topbar .forms-menu>summary{border:1px solid #104790;border-bottom:3px solid #0c3672;background:linear-gradient(#286dd0,#175bb8);box-shadow:0 3px 8px #153b702b;transition:transform .18s ease,box-shadow .18s ease,background .18s ease}
+.topbar .forms-menu>summary:hover,.topbar .forms-menu>summary:focus-visible{transform:translateY(-2px);box-shadow:0 5px 12px #153b7040;background:linear-gradient(#357ce0,#175bb8)}
+.topbar .forms-menu[open]>summary{background:linear-gradient(#174c9e,#103e87);border-bottom-color:#e0ae28;box-shadow:0 0 0 2px #ffe38b80}
+.topbar .forms-menu>summary:active{transform:translateY(1px);box-shadow:0 1px 3px #153b7026}
+.topbar .forms-menu>summary::after{display:inline-block;transition:transform .18s ease}.topbar .forms-menu[open]>summary::after{transform:rotate(180deg)}
+footer>div{background:#fff5cf;border-left:3px solid #d9a520;padding:6px 10px;border-radius:3px}footer>div>strong{font-size:14px;color:#124b96;font-weight:800}footer>div>span{font-size:13px;color:#334e70;font-weight:600}
+@media(min-width:1000px){footer>div>strong{font-size:12px}footer>div>span{font-size:11px}}
+@media(prefers-reduced-motion:reduce){.topbar .forms-menu>summary,.topbar .forms-menu>summary::after{transition:none!important;transform:none!important}}
