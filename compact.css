@@ -143,3 +143,8 @@ body.comfortable-view{font-size:17px;line-height:1.6;max-width:1600px}.comfortab
 footer>div{background:#fff5cf;border-left:3px solid #d9a520;padding:6px 10px;border-radius:3px}footer>div>strong{font-size:14px;color:#124b96;font-weight:800}footer>div>span{font-size:13px;color:#334e70;font-weight:600}
 @media(min-width:1000px){footer>div>strong{font-size:12px}footer>div>span{font-size:11px}}
 @media(prefers-reduced-motion:reduce){.topbar .forms-menu>summary,.topbar .forms-menu>summary::after{transition:none!important;transform:none!important}}
+
+/* A plain-text cue points to a strongly highlighted copy action. */
+.copy-action{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.standby-command .copy-hint{font-family:'Segoe UI',sans-serif;font-size:13px;font-weight:400;letter-spacing:0;color:#fff8df;white-space:nowrap}.standby-command #copy-command{background:#ffe16c;color:#352400;border:2px solid #c69513;font-size:13px;font-weight:800;padding:8px 12px;box-shadow:0 0 0 3px #fff0b54d,0 3px 8px #0003;transition:transform .15s ease,background .15s ease}.standby-command #copy-command:hover,.standby-command #copy-command:focus-visible{background:#ffd13b;box-shadow:0 0 0 4px #ffe99a80;transform:translateY(-1px)}
+@media(max-width:500px){.standby-command>div{flex-wrap:wrap}.copy-action{gap:7px}.standby-command .copy-hint{font-size:12px}}
+@media(prefers-reduced-motion:reduce){.standby-command #copy-command{transition:none!important;transform:none!important}}

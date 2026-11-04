@@ -2492,6 +2492,8 @@ function Start-Gui {
     $G.Hand.Font = (New-UiFont 'Wingdings' 20); $G.Hand.ForeColor = [Drawing.Color]::FromArgb(198, 40, 40)
     $G.Hand.Margin = New-Object Windows.Forms.Padding(10, 0, 2, 0); $G.Hand.Visible = $false
     $G.BOpen.Cursor = [Windows.Forms.Cursors]::Hand
+    $G.BBrowserSetup=New-Btn 'DSC islive Check - Bookmark / Startup setup' 310
+    $bar.Controls.Add($G.BBrowserSetup)
     $bar.Controls.AddRange(@($G.BTest, $G.BFix, $G.BLocate, $G.Hand, $G.BOpen, $G.BReport, $G.BPack, $G.BCancel, $G.BClose))
     $G.Flash = New-Object Windows.Forms.Timer; $G.Flash.Interval = 450; $script:FlashOn = $false
     $G.Flash.Add_Tick({
@@ -2617,7 +2619,7 @@ function Start-Gui {
         $script:G.Busy=$b
         $script:G.BClose.Enabled=-not $b
         $script:G.BCancel.Enabled=($b -and $script:RepairRunning -and -not $script:CancelRequested)
-        foreach ($k in 'BTest', 'BFix', 'BLocate', 'BOpen', 'BReport', 'BPack', 'BGitHub', 'BImprove', 'BJavaUpdate', 'BCertificate') { $script:G[$k].Enabled = -not $b }
+        foreach ($k in 'BTest', 'BFix', 'BLocate', 'BOpen', 'BReport', 'BPack', 'BGitHub', 'BImprove', 'BJavaUpdate', 'BCertificate', 'BBrowserSetup') { $script:G[$k].Enabled = -not $b }
         $script:G.Prog.Visible = $b
         $script:G.Form.Cursor = $(if ($b) { [Windows.Forms.Cursors]::WaitCursor } else { [Windows.Forms.Cursors]::Default })
         [System.Windows.Forms.Application]::DoEvents()
@@ -2782,6 +2784,7 @@ function Start-Gui {
     })
     $G.BClose.Add_Click({ Invoke-UiSafe { $script:G.Form.Close() } })
     $G.BReport.Add_Click({ Invoke-UiSafe { $rp = Save-Results; Start-Process $rp } })
+    $G.BBrowserSetup.Add_Click({Invoke-UiSafe {if(-not $script:G.Busy){Show-DscBrowserAdditionalSettings $script:G.Form}}})
     $G.BGitHub.Add_Click({ Invoke-UiSafe { Save-DscSession $Results; Show-DscGitHubReport -UseGui } })
     $G.BImprove.Add_Click({ Invoke-UiSafe { Save-DscSession $Results; Show-DscGitHubReport -Kind Improvement -UseGui } })
     function Invoke-DssInstallAndContinueGui {
@@ -2911,6 +2914,101 @@ function Start-Gui {
 
 
 # Option 3 is isolated from DSS installation, ports, certificates and full repairs.
+function Get-DscBrowserSetupDefinition([string]$Browser) {
+    switch($Browser){
+        'Chrome' {return [pscustomobject]@{Browser='Chrome';Startup='chrome://settings/onStartup'}}
+        'Edge' {return [pscustomobject]@{Browser='Edge';Startup='edge://settings/startHomeNTP'}}
+        'Firefox' {return [pscustomobject]@{Browser='Firefox';Startup='about:preferences#home'}}
+        default {throw 'Select Chrome, Edge or Firefox.'}
+    }
+}
+function New-DscBookmarkImportFile([switch]$Confirmed) {
+    if(-not $Confirmed){throw 'Bookmark file creation requires approval.'}
+    $file=Join-Path $RunDir 'DSC-isLive-bookmark.html'
+    $html=@'
+<!DOCTYPE NETSCAPE-Bookmark-file-1>
+<META HTTP-EQUIV="Content-Type" CONTENT="text/html; charset=UTF-8">
+<TITLE>DSC islive Check</TITLE>
+<H1>DSC islive Check</H1>
+<DL><p>
+<DT><A HREF="https://eoffsigner.eoffice.gov.in:55101/check/isLive">DSC islive Check</A>
+</DL><p>
+'@
+    [IO.File]::WriteAllText($file,$html,(New-Object Text.UTF8Encoding $false))
+    return $file
+}
+function Get-DscBrowserSetupInstructions([string]$Browser,[switch]$Bookmark,[switch]$Startup,[string]$ImportFile) {
+    [void](Get-DscBrowserSetupDefinition $Browser)
+    $lines=@("$Browser - additional settings",'')
+    if($Bookmark){
+        $lines+=@('BOOKMARK: DSC islive Check','The isLive page will open. Press Ctrl+D and name the bookmark DSC islive Check. Skip if it already exists.',"Alternative: import this HTML file through your browser's bookmarks/favorites import command:",$ImportFile,'Only this one DSC bookmark is included. Import can create a duplicate if it already exists.','')
+    }
+    if($Startup){
+        $lines+=@('STARTUP PAGE:',$(switch($Browser){'Chrome' {'On startup > Open a specific page or set of pages > Add a new page.'};'Edge' {'When Edge starts > Open these pages > Add a new page.'};'Firefox' {'Home > Homepage and new windows > Custom URLs. Add the DSC URL to the existing homepage list, separated by |.'}}),'Keep all existing URLs. If you use Restore previous session, review that choice before switching startup mode. If your organization manages this setting, ask IT; do not replace its policy.','')
+    }
+    $lines+=@('URL: https://eoffsigner.eoffice.gov.in:55101/check/isLive','The signer must be running before the startup page can succeed. Certificate expiry warnings are not removed by a bookmark or startup entry.','Continue opens the selected browser pages. You complete and confirm the changes in the browser; opening settings is not proof that they were saved.')
+    return ($lines -join "`r`n")
+}
+function Open-DscBrowserAdditionalSettings([string[]]$Browsers,[switch]$Bookmark,[switch]$Startup,[switch]$Confirmed) {
+    if(-not $Confirmed){throw 'Continue approval is required.'}
+    if(-not $Browsers.Count -or (-not $Bookmark -and -not $Startup)){throw 'Select a browser and at least one setting.'}
+    foreach($name in $Browsers){[void](Get-DscBrowserSetupDefinition $name)}
+    $importFile=if($Bookmark){New-DscBookmarkImportFile -Confirmed}else{''}
+    foreach($name in $Browsers|Select-Object -Unique){
+        $definition=Get-DscBrowserSetupDefinition $name;$browser=Find-Browser $name
+        if(-not $browser){Write-DscEvent 'Info' 'Browser setup skipped; browser not installed' @{Browser=$name};continue}
+        $message=Get-DscBrowserSetupInstructions $name -Bookmark:$Bookmark -Startup:$Startup -ImportFile $importFile
+        if(-not (Confirm-DscBrowserSetup $message "$name - bookmark / startup")){Write-DscEvent 'Info' 'Browser additional setup cancelled' @{Browser=$name};continue}
+        try{
+            $targets=@();if($Bookmark){$targets+='https://eoffsigner.eoffice.gov.in:55101/check/isLive'};if($Startup){$targets+=$definition.Startup}
+            foreach($target in $targets){if(-not $TestMode){Start-Process -FilePath $browser.Exe -ArgumentList $target -ErrorAction Stop|Out-Null}}
+            Write-DscEvent 'Info' 'Bookmark/startup setup opened; completion pending user action' @{Browser=$name;Bookmark=[bool]$Bookmark;Startup=[bool]$Startup;ImportFile=$importFile}
+        }catch{Write-DscError $_ ("Open $name additional settings")}
+    }
+    return $importFile
+}
+function Show-DscBrowserAdditionalSettings($Owner) {
+    Add-Type -AssemblyName System.Windows.Forms,System.Drawing
+    $d=New-Object Windows.Forms.Form;$d.Text='Additional browser settings - DSC islive Check';$d.Size=New-Object Drawing.Size(810,760);$d.MinimumSize=New-Object Drawing.Size(700,600);$d.StartPosition='CenterParent';$d.Font=New-Object Drawing.Font('Segoe UI',10)
+    $layout=New-Object Windows.Forms.TableLayoutPanel;$layout.Dock='Fill';$layout.ColumnCount=1;$layout.RowCount=7;$layout.Padding=New-Object Windows.Forms.Padding(12)
+    foreach($height in @(55,45,85,45,35,250,50)){[void]$layout.RowStyles.Add((New-Object Windows.Forms.RowStyle('Absolute',$height)))};$layout.AutoScroll=$true;$d.Controls.Add($layout)
+    $intro=New-Object Windows.Forms.Label;$intro.Dock='Fill';$intro.Text="Optional browser setup. Existing bookmarks, startup pages and organization policies are preserved.`r`nSelect a browser and action; complete the changes through that browser's own controls.";$layout.Controls.Add($intro,0,0)
+    $browserBar=New-Object Windows.Forms.FlowLayoutPanel;$browserBar.Dock='Fill';$boxes=@{}
+    foreach($name in 'Chrome','Edge','Firefox'){$cb=New-Object Windows.Forms.CheckBox;$cb.Text=$name;$cb.AutoSize=$true;$boxes[$name]=$cb;$browserBar.Controls.Add($cb)};$layout.Controls.Add($browserBar,0,1)
+    $options=New-Object Windows.Forms.FlowLayoutPanel;$options.Dock='Fill';$options.FlowDirection='TopDown'
+    $bookmark=New-Object Windows.Forms.CheckBox;$bookmark.Text='Add bookmark: DSC islive Check (guided / import HTML)';$bookmark.AutoSize=$true
+    $startup=New-Object Windows.Forms.CheckBox;$startup.Text='Add isLive to startup pages (guided; keep your existing pages)';$startup.AutoSize=$true;$options.Controls.AddRange(@($bookmark,$startup));$layout.Controls.Add($options,0,2)
+    $url=New-Object Windows.Forms.TextBox;$url.ReadOnly=$true;$url.Text='https://eoffsigner.eoffice.gov.in:55101/check/isLive';$url.Dock='Fill';$layout.Controls.Add($url,0,3)
+    $copy=New-Object Windows.Forms.Button;$copy.Text='Copy isLive URL';$copy.AutoSize=$true;$layout.Controls.Add($copy,0,4)
+    $notes=New-Object Windows.Forms.TextBox;$notes.Multiline=$true;$notes.ReadOnly=$true;$notes.ScrollBars='Vertical';$notes.Dock='Fill';$notes.Text="Bookmark name: DSC islive Check`r`n`r`nChrome/Edge: keep existing startup URLs when adding the DSC URL.`r`nFirefox: keep existing homepage URLs, adding the DSC URL with a | separator.`r`n`r`nA bookmark import file is prepared only after Continue. The script does not edit browser databases or force a managed policy. Settings remain pending until saved in the browser.`r`n`r`nThe signer must already be running. This does not bypass certificate warnings.";$layout.Controls.Add($notes,0,5)
+    $buttons=New-Object Windows.Forms.FlowLayoutPanel;$buttons.Dock='Fill';$buttons.FlowDirection='RightToLeft'
+    $cancel=New-Object Windows.Forms.Button;$cancel.Text='Cancel / Close';$cancel.AutoSize=$true;$cancel.DialogResult='Cancel'
+    $continue=New-Object Windows.Forms.Button;$continue.Text='Continue';$continue.AutoSize=$true;$buttons.Controls.AddRange(@($cancel,$continue));$layout.Controls.Add($buttons,0,6)
+    $d.AcceptButton=$cancel;$d.CancelButton=$cancel;$d.ActiveControl=$cancel
+    $script:DscBrowserDialog=@{Form=$d;Boxes=$boxes;Bookmark=$bookmark;Startup=$startup;Notes=$notes;Continue=$continue;Copy=$copy}
+    function Confirm-DscBrowserSetup([string]$Message,[string]$Title){
+        $old=$script:OtherUi;$script:OtherUi=@{Form=$script:DscBrowserDialog.Form}
+        try{return (Show-OtherContinueDialog $Message $Title)}finally{$script:OtherUi=$old}
+    }
+    $copy.Add_Click({Set-Clipboard -Value 'https://eoffsigner.eoffice.gov.in:55101/check/isLive'})
+    $continue.Add_Click({
+        $state=$script:DscBrowserDialog
+        $selected=@('Chrome','Edge','Firefox'|Where-Object{$state.Boxes[$_].Checked})
+        if(-not $selected.Count -or (-not $state.Bookmark.Checked -and -not $state.Startup.Checked)){$state.Notes.AppendText("`r`nSelect at least one browser and one action first.");return}
+        $state.Continue.Enabled=$false
+        $Owner.TopMost=$false
+        if($script:G -and $script:G.Form -eq $Owner -and $script:G.PinTop){$script:G.PinTop.Checked=$false}
+        if($script:OtherUi -and $script:OtherUi.Form -eq $Owner -and $script:OtherUi.Pin){$script:OtherUi.Pin.Checked=$false}
+        try{
+            $file=Open-DscBrowserAdditionalSettings $selected -Bookmark:$state.Bookmark.Checked -Startup:$state.Startup.Checked -Confirmed
+            if($file){$state.Notes.AppendText("`r`nBookmark import file: $file")}
+            $state.Notes.AppendText("`r`nSelected setup steps processed. Cancelled or missing browsers are skipped. For pages that opened, finish saving in the browser; completion is not automatically verified.")
+        }catch{Write-DscError $_ 'Additional browser settings';$state.Notes.AppendText("`r`nError: "+$_.Exception.Message)}
+        finally{$state.Continue.Enabled=$true}
+    })
+    try{[void]$d.ShowDialog($Owner)}finally{$d.Dispose();$script:DscBrowserDialog=$null}
+}
+
 function Get-OtherWebsiteCatalog {
     @(
         [pscustomobject]@{Name='HRMS';Origin='https://hrms.indianrail.gov.in'},
