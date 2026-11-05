@@ -2539,6 +2539,16 @@ function Start-Gui {
     $split.Panel1.Controls.Add($lv); $split.Panel2.Controls.Add($txt)
 
     $f.Controls.Add($split); $f.Controls.Add($other); $f.Controls.Add($live); $f.Controls.Add($hdr); $f.Controls.Add($progressPanel); $f.Controls.Add($bar); $f.Controls.Add($ss)
+    $credit = New-Object Windows.Forms.Label
+    $credit.Dock = 'Bottom'
+    $credit.Height = 44
+    $credit.BackColor = [Drawing.Color]::FromArgb(255,245,205)
+    $credit.ForeColor = [Drawing.Color]::FromArgb(20,53,94)
+    $credit.Font = New-UiFont 'Segoe UI' 10
+    $credit.TextAlign = 'MiddleCenter'
+    $credit.Text = "Developed by Girish Tiwari  $([char]0x00B7)  $([char]0x00A9) 2026`r`nSenior Engineer Information Technology / Certified Microsoft Professional Engineer"
+    $f.Controls.Add($credit)
+    $f.Controls.SetChildIndex($credit,$f.Controls.GetChildIndex($bar)+1)
     $G.Split = $split
 
 
