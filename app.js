@@ -111,3 +111,17 @@ viewToggle.addEventListener('click', () => {
     document.body.classList.toggle('comfortable-view', comfortable);
     viewToggle.textContent = comfortable ? 'Compact view' : 'Comfortable view';
 });
+
+if (window.location?.origin === 'https://girishtiwari007.github.io'
+    && window.location.pathname.startsWith('/nrdscfix/')) {
+    const counter = $('#page-view-counter');
+    const badge = document.createElement('img');
+    badge.alt = 'Total page views';
+    badge.height = 20;
+    badge.referrerPolicy = 'no-referrer';
+    badge.addEventListener('load', () => {
+        counter.append(badge);
+        counter.hidden = false;
+    });
+    badge.src = 'https://hits.sh/girishtiwari007.github.io/nrdscfix.svg?label=Page%20views&color=175bb8';
+}

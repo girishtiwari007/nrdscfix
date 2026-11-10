@@ -152,3 +152,10 @@ footer>div{background:#fff5cf;border-left:3px solid #d9a520;padding:6px 10px;bor
 /* Keep the developer credit together in the centred footer. */
 footer{display:flex;flex-direction:column;align-items:center;text-align:center;gap:8px}footer>.developer-footer{width:100%;border-left:0;border-top:2px solid #d9a520;padding:9px 12px;text-align:center}footer>.developer-footer>strong{display:block;font-size:16px}footer>.developer-footer>span{display:block;font-size:15px;line-height:1.5}footer>.developer-footer .developer-name{font-weight:400}footer>.developer-footer .developer-name b{font-weight:800}footer>p{text-align:center;margin:0}
 @media(min-width:1000px){footer>.developer-footer>strong{font-size:14px}footer>.developer-footer>span{font-size:13px}}
+
+#page-view-counter[hidden] {
+    display: none;
+}
+#page-view-counter img {
+    vertical-align: middle;
+}
