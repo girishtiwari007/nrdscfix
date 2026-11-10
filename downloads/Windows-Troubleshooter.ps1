@@ -2484,6 +2484,9 @@ function Start-Gui {
     $G.BOpen.BackColor = [Drawing.Color]::FromArgb(255, 221, 0); $G.BOpen.UseVisualStyleBackColor = $false
     $G.BOpen.Font = (New-UiFont 'Segoe UI Semibold' 9.5)
     $G.BReport = New-Btn 'Open report' 105
+    $G.BRetry = New-Btn 'Retry selected check' 158
+    $G.BRetry.Enabled = $false
+    $G.BCopySummary = New-Btn 'Copy diagnostic summary' 180
     $G.BPack = New-Btn 'Batch packing unavailable' 150; $G.BPack.Visible = $false
     $G.BClose = New-Btn 'Close' 80
     $G.BCancel = New-Btn 'Cancel remaining fixes' 165; $G.BCancel.Enabled=$false
@@ -2494,7 +2497,7 @@ function Start-Gui {
     $G.BOpen.Cursor = [Windows.Forms.Cursors]::Hand
     $G.BBrowserSetup=New-Btn 'DSC islive Check - Bookmark / Startup setup' 310
     $bar.Controls.Add($G.BBrowserSetup)
-    $bar.Controls.AddRange(@($G.BTest, $G.BFix, $G.BLocate, $G.Hand, $G.BOpen, $G.BReport, $G.BPack, $G.BCancel, $G.BClose))
+    $bar.Controls.AddRange(@($G.BTest, $G.BFix, $G.BLocate, $G.Hand, $G.BOpen, $G.BReport, $G.BRetry, $G.BCopySummary, $G.BPack, $G.BCancel, $G.BClose))
     $G.Flash = New-Object Windows.Forms.Timer; $G.Flash.Interval = 450; $script:FlashOn = $false
     $G.Flash.Add_Tick({
         try {
@@ -2629,7 +2632,8 @@ function Start-Gui {
         $script:G.Busy=$b
         $script:G.BClose.Enabled=-not $b
         $script:G.BCancel.Enabled=($b -and $script:RepairRunning -and -not $script:CancelRequested)
-        foreach ($k in 'BTest', 'BFix', 'BLocate', 'BOpen', 'BReport', 'BPack', 'BGitHub', 'BImprove', 'BJavaUpdate', 'BCertificate', 'BBrowserSetup') { $script:G[$k].Enabled = -not $b }
+        foreach ($k in 'BTest', 'BFix', 'BLocate', 'BOpen', 'BReport', 'BPack', 'BGitHub', 'BImprove', 'BJavaUpdate', 'BCertificate', 'BBrowserSetup', 'BCopySummary') { $script:G[$k].Enabled = -not $b }
+        $script:G.BRetry.Enabled = (-not $b -and $script:G.List.SelectedItems.Count -eq 1)
         $script:G.Prog.Visible = $b
         $script:G.Form.Cursor = $(if ($b) { [Windows.Forms.Cursors]::WaitCursor } else { [Windows.Forms.Cursors]::Default })
         [System.Windows.Forms.Application]::DoEvents()
@@ -2773,7 +2777,7 @@ function Start-Gui {
 
     # ---- events
     $lv.Add_ItemCheck({ param($s, $e) $d = $ByNo[[int]$s.Items[$e.Index].Tag]; if (-not ($d.R.Status -in 'FAIL', 'SKIP' -or ($d.R.Status -eq 'WARN' -and $d.R.Fixable))) { $e.NewValue = 'Unchecked' } })
-    $lv.Add_SelectedIndexChanged({ Invoke-UiSafe { Show-Detail } })
+    $lv.Add_SelectedIndexChanged({ Invoke-UiSafe { $script:G.BRetry.Enabled = (-not $script:G.Busy -and $script:G.List.SelectedItems.Count -eq 1); Show-Detail } })
     $G.BTest.Add_Click({ Invoke-UiSafe { Invoke-GuiTest -Full; Show-Detail; Show-InitialPendingReview } })
     $G.BCertificate.Add_Click({ Invoke-UiSafe { Show-SignerCertificateHelp -UseGui } })
     $G.BJavaUpdate.Add_Click({ Invoke-UiSafe {
@@ -2793,6 +2797,37 @@ function Start-Gui {
         if($script:G.Busy){$eventArgs.Cancel=$true;$script:G.Stat.Text='An operation is active. Use Cancel remaining fixes, or wait for checks to finish.'}
     })
     $G.BClose.Add_Click({ Invoke-UiSafe { $script:G.Form.Close() } })
+    $G.BRetry.Add_Click({ Invoke-UiSafe {
+        if ($script:G.Busy -or $script:G.List.SelectedItems.Count -ne 1) { return }
+        $checkNo = [int]$script:G.List.SelectedItems[0].Tag
+        $script:DiagnosticsOnly = $true
+        $script:ReviewApproved = $false
+        Set-Busy $true
+        try {
+            if ($script:UiProgress) { & $script:UiProgress 'begin-checks' $null 1 }
+            Invoke-AllTests @($checkNo)
+            [void](Save-Results)
+        } finally {
+            Set-Busy $false
+        }
+        Update-Summary
+        Show-Detail
+    } })
+    $G.BCopySummary.Add_Click({ Invoke-UiSafe {
+        $lines = @("DSC diagnostic summary | Build $($script:DscSession.ToolVersion)", '')
+        foreach ($definition in $Defs) {
+            $result = $definition.R
+            $lines += "[$($definition.DisplayNo)] $($definition.Title) - $(Get-Label $result.Status)"
+            if ($result.Value) { $lines += "  $($result.Value)" }
+            if ($result.Status -in 'FAIL','WARN','SKIP') {
+                $lines += @($definition.Last.Info | Where-Object { $_ -and $_ -ne $result.Value } | ForEach-Object { "  $_" })
+                if ($result.Advice) { $lines += "  Next step: $($result.Advice)" }
+                elseif ($result.Fixable -and $definition.Plan) { $lines += "  Review: $($definition.Plan)" }
+            }
+        }
+        [Windows.Forms.Clipboard]::SetText(($lines -join [Environment]::NewLine))
+        $script:G.Stat.Text = 'Diagnostic summary copied to clipboard.'
+    } })
     $G.BReport.Add_Click({ Invoke-UiSafe { $rp = Save-Results; Start-Process $rp } })
     $G.BBrowserSetup.Add_Click({Invoke-UiSafe {if(-not $script:G.Busy){Show-DscBrowserAdditionalSettings $script:G.Form}}})
     $G.BGitHub.Add_Click({ Invoke-UiSafe { Save-DscSession $Results; Show-DscGitHubReport -UseGui } })
