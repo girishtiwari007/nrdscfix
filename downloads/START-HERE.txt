@@ -9,10 +9,10 @@ Developed by Girish Tiwari
 6. Option 3: select browsers and railway sites. Continue / Cancel is asked for each browser.
    Complete Delete data / Reset permissions yourself in the browser for the selected sites only.
    Working Java stays installed; Java updates are optional.
-7. Option 5 has separate switcher and installer/progress tabs: IPAS port 2068; IRWCMS/IRCEP port 2039.
-   Choose Setup BOTH signers automatically. Approve UAC and review existing CRIS MSI products to remove.
+7. Option 5: Check status first. IPAS port 2068; IRWCMS/IRCEP port 2039.
+   Choose Install / Repair both + desktop switcher if needed. Approve UAC and review CRIS products to remove.
    Both inspected packages download before uninstall; then IPAS and IRWCMS install to separate folders.
-   Setup creates CRISSigner_IPAS, CRISSigner_IRWCMS and the desktop CRIS Signer Switcher with UAC.
+   Setup creates CRISSigner_IPAS, CRISSigner_IRWCMS and a compact desktop-only CRIS Switcher with UAC.
    Existing CRIS configuration may be replaced. Changed installer hashes block automatic setup.
    Separate verbose MSI logs and a setup journal show progress, partial failures and reboot requirements.
 8. Option 6: APAR 7.0.2 uses port 55103; E-Office 4.1.8 uses port 55101.

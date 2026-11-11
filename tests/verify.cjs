@@ -11,7 +11,7 @@ const inlineBehavior=html.match(/<script id="toolkit-behavior">([\s\S]*?)<\/scri
 if(inlineBehavior){vm.runInNewContext(inlineBehavior[1],context)}else{vm.runInNewContext(fs.readFileSync(path.join(root,'launcher-data.js'),'utf8'),context);vm.runInNewContext(fs.readFileSync(path.join(root,'app.js'),'utf8'),context)}
 (async()=>{
 check(!html.includes('YOUR SESSION CHECKLIST'),'session checklist removed');
-check(html.includes('TROUBLESHOOTING METHOD')&&html.includes('Follow the steps below')&&ids['standby-command'].textContent.includes('SecurityProtocol'),'primary troubleshooting instructions and command are present');
+check(html.includes('TROUBLESHOOTING METHOD')&&html.includes('Open. Paste. Choose.')&&ids['standby-command'].textContent.includes('SecurityProtocol'),'primary troubleshooting instructions and command are present');
 check(launchers.length===0&&!html.includes('id="launcher-download"'),'launcher download actions removed');
 check(!html.includes('window.DSS_LAUNCHER'),'launcher binary payload removed from published page');
 check(ids['standby-command'].textContent.trim().split(/\r?\n/).length===2,'manual command stays exactly two lines');
@@ -33,5 +33,7 @@ await ids['download-error-report'].fire('click');check(!ids['download-error-repo
 check(ids['token-reminder'].open,'token software reminder opens at page launch');
 await ids['token-reminder-ok'].fire('click');check(!ids['token-reminder'].open,'OK dismisses startup reminder');
 check(html.includes('It does not confirm that your DSC token is connected or ready'),'reminder distinguishes signer service from token readiness');
+check(html.includes('ps-workspace')&&html.includes('Administrator'),'compact PowerShell panel is present');
+check(!html.includes('quick-launch-setup')&&!html.includes('Setup-QuickLaunch.ps1'),'optional hotkey setup removed');
 console.log('TOTAL PASS:',count);
 })().catch(e=>{console.error(e);process.exitCode=1});

@@ -7,12 +7,13 @@ Trellix/AMSI and organization policy remain active. If blocked, stop and ask IT 
 #>
 & {
 [CmdletBinding()]
-param([ValidateSet('menu','console','gui','check','othergui','crisgui','crisinstall','apargui')][string]$Mode = 'menu')
+param([ValidateSet('menu','console','gui','check','othergui','crisgui','crisinstall','crisswitch','apargui')][string]$Mode = 'menu')
 $script:DscEntryText = '& {' + $MyInvocation.MyCommand.Definition + [Environment]::NewLine + '} @args'
 if ($env:OS -ne 'Windows_NT') { throw 'This tool requires Windows.' }
 if ($ExecutionContext.SessionState.LanguageMode -ne 'FullLanguage') {
     throw 'Organization policy restricts this PowerShell session. Ask IT to approve this tool; it will not bypass that policy.'
 }
+$script:DscMenuTheme=$null
 # Session logging is embedded so each published entry point remains self-contained.
 function Initialize-DscSession([string]$Repository, [string]$ModeName) {
     $script:DscSession = [ordered]@{
@@ -175,7 +176,7 @@ function Invoke-DscNative {
     $Results = $null
     $script:DscSession.Mode = $RequestedMode
     try {
-    if ($RequestedMode -in 'gui','othergui','crisgui','crisinstall','apargui' -and [Threading.Thread]::CurrentThread.ApartmentState -ne 'STA') {
+    if ($RequestedMode -in 'gui','othergui','crisgui','crisinstall','crisswitch','apargui' -and [Threading.Thread]::CurrentThread.ApartmentState -ne 'STA') {
         Write-Host 'Windows popups require STA. Open Windows PowerShell (powershell.exe -STA), then run the native command again, or choose console mode.' -ForegroundColor Yellow
         return
     }
@@ -184,7 +185,7 @@ $ProgressPreference = 'SilentlyContinue'
 $TestRoot = $env:DSSF_TESTROOT
 $TestMode = -not [string]::IsNullOrEmpty($TestRoot)
 $CheckOnly = ($RequestedMode -eq 'check')
-$Mode = $(if ($RequestedMode -in 'gui','othergui','crisgui','crisinstall','apargui') { 'gui' } else { 'console' })
+$Mode = $(if ($RequestedMode -in 'gui','othergui','crisgui','crisinstall','crisswitch','apargui') { 'gui' } else { 'console' })
 $script:Ui = $null; $script:UiJavaOffer = $null; $script:DssInstallOffered=$false; $script:InitialReviewShown=$false; $script:CancelRequested=$false; $script:RepairRunning=$false
 $script:UiLog = $null
 $script:UiStatus = $null
@@ -3511,6 +3512,7 @@ function Invoke-CrisSetupBoth([switch]$Confirmed,[string[]]$ApprovedExistingCode
         $plans=@{};foreach($id in 'IPAS','IRWCMS'){
             if($script:CancelRequested){throw 'Setup cancelled before uninstall.'}
             $state.Stage='Download / inspect '+$id;$state|ConvertTo-Json|Set-Content -LiteralPath $journal
+            if($script:UiStatus){& $script:UiStatus ('Downloading and validating '+$id)}
             $plans[$id]=Get-CrisSetupPackage $id
         }
         Assert-CrisCoexistence $plans.IPAS $plans.IRWCMS
@@ -3525,6 +3527,7 @@ function Invoke-CrisSetupBoth([switch]$Confirmed,[string[]]$ApprovedExistingCode
             if(-not (@(Get-CrisExistingProducts).Code -contains $entry.Code)){continue}
             $state.Stage='Uninstall '+$entry.Code;$state|ConvertTo-Json|Set-Content -LiteralPath $journal
             $log=Join-Path $RunDir ('CRIS-uninstall-'+$entry.Code.Trim('{}')+'.log')
+            if($script:UiStatus){& $script:UiStatus $state.Stage}
             $code=Invoke-CrisMsiWait ('/x '+$entry.Code+' /qn /norestart REBOOT=ReallySuppress /L*v "'+$log+'"') ('Remove existing CRIS '+$entry.Code)
             $state.Uninstalled+= $entry.Code
             if($code -in 3010,1641){$state.RebootRequired=$true;throw 'Windows requires a restart after uninstall. Restart, then run Setup both signers again; no new signer has been installed yet.'}
@@ -3538,18 +3541,19 @@ function Invoke-CrisSetupBoth([switch]$Confirmed,[string[]]$ApprovedExistingCode
             $state.Stage='Install '+$id;$state|ConvertTo-Json|Set-Content -LiteralPath $journal
             $log=Join-Path $RunDir ('CRIS-'+$id+'-install.log')
             $arguments='/i "'+$plan.Path+'" /qn /norestart REBOOT=ReallySuppress APPDIR="C:\CrisSigner\" TRANSFORMS="'+$transforms[$id]+'" /L*v "'+$log+'"'
+            if($script:UiStatus){& $script:UiStatus $state.Stage}
             $code=Invoke-CrisMsiWait $arguments ('Install '+$id)
             if($code -eq 1605 -or -not (Test-Path -LiteralPath $d.Exe -PathType Leaf)){throw "Target executable not validated: $($d.Exe). See $log"}
             if((Get-Item -LiteralPath $d.Exe).Length -ne (Get-CrisKnownPackages)[$id].ExeBytes){throw "Installed $id binary size does not match its inspected MSI file table."}
             $state.Installed+=$id;if($code -in 3010,1641){$state.RebootRequired=$true}
             $script:CrisUi.Progress.Value=$(if($id -eq 'IPAS'){65}else{80})
         }
-        $state.Stage='Desktop shortcuts';New-CrisSignerShortcuts;Save-CrisDesktopSwitcher -Confirmed
+        $state.Stage='Desktop shortcuts';if($script:UiStatus){& $script:UiStatus 'Creating desktop shortcuts and the switcher'};New-CrisSignerShortcuts;Save-CrisDesktopSwitcher -Confirmed
         $script:CrisUi.Progress.Value=90
         if(-not $state.RebootRequired){
             foreach($id in 'IPAS','IRWCMS'){
                 if($script:CancelRequested){throw 'Setup cancelled before runtime validation.'}
-                $state.Stage='Verify port for '+$id;Invoke-CrisSwitch $id -Confirmed
+                $state.Stage='Verify port for '+$id;if($script:UiStatus){& $script:UiStatus $state.Stage};Invoke-CrisSwitch $id -Confirmed
             }
             Invoke-CrisSwitch IPAS -Confirmed
         }
@@ -3688,7 +3692,7 @@ function Save-CrisDesktopSwitcher([switch]$Confirmed){
     $shell=New-Object -ComObject WScript.Shell
     try{
         $shortcut=Join-Path ([Environment]::GetFolderPath('Desktop')) 'CRIS Signer Switcher.lnk'
-        $link=$shell.CreateShortcut($shortcut);$link.TargetPath="$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe";$link.Arguments='-NoProfile -STA -File "'+$copy+'" -Mode crisgui';$link.WorkingDirectory=$folder;$link.Save()
+        $link=$shell.CreateShortcut($shortcut);$link.TargetPath="$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe";$link.Arguments='-NoProfile -STA -File "'+$copy+'" -Mode crisswitch';$link.WorkingDirectory=$folder;$link.Save()
         # Shell Link RunAsUser flag makes Windows request UAC on launch.
         $bytes=[IO.File]::ReadAllBytes($shortcut);if($bytes.Length -lt 76){throw 'Invalid shortcut header.'};$bytes[21]=$bytes[21] -bor 0x20;[IO.File]::WriteAllBytes($shortcut,$bytes)
     }finally{[void][Runtime.InteropServices.Marshal]::ReleaseComObject($shell)}
@@ -3697,52 +3701,73 @@ function Save-CrisDesktopSwitcher([switch]$Confirmed){
 }
 function Start-CrisGui {
     Add-Type -AssemblyName System.Windows.Forms,System.Drawing
-    $script:CrisUi=@{Busy=$false;Plans=@{};Rows=@{}};$u=$script:CrisUi
-    $f=New-Object Windows.Forms.Form;$u.Form=$f;$f.Text='CRIS Signer Switcher & Installer';$f.Size=New-Object Drawing.Size(980,730);$f.MinimumSize=New-Object Drawing.Size(850,600);$f.StartPosition='CenterScreen';$f.Font=New-Object Drawing.Font('Segoe UI',10)
-    $root=New-Object Windows.Forms.TableLayoutPanel;$root.Dock='Fill';$root.ColumnCount=1;$root.RowCount=4;$root.Padding=New-Object Windows.Forms.Padding(12)
-    [void]$root.RowStyles.Add((New-Object Windows.Forms.RowStyle('Percent',100)));foreach($h in @(35,110,40)){[void]$root.RowStyles.Add((New-Object Windows.Forms.RowStyle('Absolute',$h)))};$f.Controls.Add($root)
-    $tabs=New-Object Windows.Forms.TabControl;$tabs.Dock='Fill';$root.Controls.Add($tabs,0,0)
-    $switchPage=New-Object Windows.Forms.TabPage;$switchPage.Text='Switcher - live status';$tabs.TabPages.Add($switchPage)
-    $installPage=New-Object Windows.Forms.TabPage;$installPage.Text='Installer / progress';$tabs.TabPages.Add($installPage)
-    $switchLayout=New-Object Windows.Forms.FlowLayoutPanel;$switchLayout.Dock='Fill';$switchLayout.FlowDirection='TopDown';$switchLayout.WrapContents=$false;$switchLayout.AutoScroll=$true;$switchPage.Controls.Add($switchLayout)
-    $hint=New-Object Windows.Forms.Label;$hint.Width=830;$hint.Height=48;$hint.Text='Green: exact signer executable owns its port. Red: stopped/missing. Amber: starting or conflict. Switching stops only the identified other signer. Service-backed signers require vendor service controls.';$switchLayout.Controls.Add($hint)
+    $switcherOnly=$RequestedMode -eq 'crisswitch'
+    $script:CrisUi=@{Busy=$false;Plans=@{};Rows=@{};StateSnapshots=@{};SwitcherOnly=$switcherOnly;ActionButtons=@()};$u=$script:CrisUi
+    $f=New-Object Windows.Forms.Form;$u.Form=$f
+    $f.Text=if($switcherOnly){'CRIS Signer Switcher'}else{'CRIS Signer - Check, Install & Switch'}
+    $f.Size=if($switcherOnly){New-Object Drawing.Size(800,520)}else{New-Object Drawing.Size(880,560)}
+    $f.MinimumSize=New-Object Drawing.Size(720,480);$f.StartPosition='CenterScreen';$f.Font=New-Object Drawing.Font('Segoe UI',10);$f.BackColor=[Drawing.Color]::FromArgb(240,245,252)
+    $area=[Windows.Forms.Screen]::PrimaryScreen.WorkingArea
+    $f.MinimumSize=New-Object Drawing.Size([Math]::Min(720,$area.Width-32),[Math]::Min(480,$area.Height-32))
+    $f.Size=New-Object Drawing.Size([Math]::Min($f.Width,$area.Width-32),[Math]::Min($f.Height,$area.Height-32))
+    $root=New-Object Windows.Forms.TableLayoutPanel;$u.Root=$root;$root.Dock='Fill';$root.ColumnCount=1;$root.RowCount=8;$root.Padding=New-Object Windows.Forms.Padding(10)
+    foreach($h in @(60,48,-1,18,36,26,0,40)){if($h -lt 0){[void]$root.RowStyles.Add((New-Object Windows.Forms.RowStyle('Percent',100)))}else{[void]$root.RowStyles.Add((New-Object Windows.Forms.RowStyle('Absolute',$h)))}};$f.Controls.Add($root)
+    $header=New-Object Windows.Forms.Label;$header.Dock='Fill';$header.BackColor=[Drawing.Color]::FromArgb(15,61,108);$header.ForeColor=[Drawing.Color]::White;$header.Padding=New-Object Windows.Forms.Padding(12,5,8,5);$header.Font=New-Object Drawing.Font('Segoe UI',13,[Drawing.FontStyle]::Bold)
+    $header.Text=if($switcherOnly){"CRIS SIGNER SWITCHER`r`nChoose the signer you need. Only one signer runs at a time."}else{"CRIS SIGNER TOOLS`r`n1. Check status     2. Install / repair only if needed     3. Switch signer"};$root.Controls.Add($header,0,0)
+    function New-CrisButton([string]$Text,[bool]$Primary=$false){
+        $b=New-Object Windows.Forms.Button;$b.Text=$Text;$b.AutoSize=$true;$b.Height=34;$b.FlatStyle='Flat';$b.FlatAppearance.BorderSize=1;$b.Margin=New-Object Windows.Forms.Padding(3)
+        $b.BackColor=if($Primary){[Drawing.Color]::FromArgb(23,91,184)}else{[Drawing.Color]::White};$b.ForeColor=if($Primary){[Drawing.Color]::White}else{[Drawing.Color]::FromArgb(15,61,108)}
+        return $b
+    }
+    $actions=New-Object Windows.Forms.TableLayoutPanel;$actions.Dock='Fill';$actions.ColumnCount=2;$actions.RowCount=1;[void]$actions.RowStyles.Add((New-Object Windows.Forms.RowStyle('Percent',100)));$actions.Margin=New-Object Windows.Forms.Padding(0)
+    [void]$actions.ColumnStyles.Add((New-Object Windows.Forms.ColumnStyle('Percent',38)));[void]$actions.ColumnStyles.Add((New-Object Windows.Forms.ColumnStyle('Percent',62)))
+    $u.Refresh=New-CrisButton '1. Check / Refresh status' $true;$u.Refresh.AutoSize=$false;$u.Refresh.Dock='Fill'
+    $u.Setup=New-CrisButton '2. Install / Repair both + desktop switcher';$u.Setup.AutoSize=$false;$u.Setup.Dock='Fill';$u.Setup.BackColor=[Drawing.Color]::FromArgb(255,224,124)
+    $actions.Controls.Add($u.Refresh,0,0);$actions.Controls.Add($u.Setup,1,0);$root.Controls.Add($actions,0,1)
+    if($switcherOnly){$u.Setup.Visible=$false;$actions.ColumnStyles[0].SizeType='Percent';$actions.ColumnStyles[0].Width=100;$actions.ColumnStyles[1].SizeType='Absolute';$actions.ColumnStyles[1].Width=0;$u.Refresh.Text='Refresh signer status'}
+    $body=New-Object Windows.Forms.FlowLayoutPanel;$u.Body=$body;$body.Dock='Fill';$body.FlowDirection='TopDown';$body.WrapContents=$false;$body.AutoScroll=$true;$root.Controls.Add($body,0,2)
+    $hint=New-Object Windows.Forms.Label;$hint.Height=24;$hint.Text='GREEN = running     RED = stopped / missing     AMBER = needs attention (see details)';$hint.ForeColor=[Drawing.Color]::FromArgb(15,61,108);$body.Controls.Add($hint)
+    $cards=@();$wide=@($hint)
     foreach($d in Get-CrisCatalog){
-        $panel=New-Object Windows.Forms.FlowLayoutPanel;$panel.Width=830;$panel.Height=112
-        $label=New-Object Windows.Forms.Label;$label.Width=810;$label.Height=28;$label.Text=$d.Name+' - checking...';$u.Rows[$d.Id]=$label;$panel.Controls.Add($label)
-        $path=New-Object Windows.Forms.Label;$path.Width=810;$path.Height=24;$path.Text=$d.Exe+' | Port '+$d.Port;$panel.Controls.Add($path)
-        $start=New-Object Windows.Forms.Button;$start.Text='Start / Switch to '+$d.Id;$start.Tag=$d.Id;$start.AutoSize=$true
-        $stop=New-Object Windows.Forms.Button;$stop.Text='Stop '+$d.Id;$stop.Tag=$d.Id;$stop.AutoSize=$true
+        $card=New-Object Windows.Forms.Panel;$card.Height=92;$card.BackColor=[Drawing.Color]::White;$card.BorderStyle='FixedSingle';$card.Margin=New-Object Windows.Forms.Padding(3,3,3,3)
+        $label=New-Object Windows.Forms.Label;$label.Location=New-Object Drawing.Point(10,5);$label.Height=25;$label.AutoEllipsis=$true;$label.Font=New-Object Drawing.Font('Segoe UI',11,[Drawing.FontStyle]::Bold);$label.Text=$d.Name+' - checking...';$u.Rows[$d.Id]=$label;$card.Controls.Add($label)
+        $path=New-Object Windows.Forms.Label;$path.Location=New-Object Drawing.Point(10,31);$path.Height=20;$path.AutoEllipsis=$true;$path.ForeColor=[Drawing.Color]::DimGray;$path.Text='Port '+$d.Port+' | '+$d.Exe;$card.Controls.Add($path)
+        $start=New-CrisButton ('Start / Switch to '+$d.Id) $true;$start.Location=New-Object Drawing.Point(10,55);$start.Tag=$d.Id
+        $stop=New-CrisButton ('Stop '+$d.Id);$stop.Location=New-Object Drawing.Point(235,55);$stop.Tag=$d.Id
         $start.Add_Click({param($sender,$eventArgs)$id=[string]$sender.Tag;Invoke-CrisUiWork {if(Confirm-CrisUi "Stop the other identified signer, then start $id? Unrelated processes will not be terminated." 'Switch CRIS signer'){Invoke-CrisSwitch $id -Confirmed}}})
         $stop.Add_Click({param($sender,$eventArgs)$id=[string]$sender.Tag;Invoke-CrisUiWork {if(Confirm-CrisUi "Stop the identified $id signer process?" 'Stop CRIS signer'){Stop-CrisVerified $id}}})
-        $panel.Controls.AddRange(@($start,$stop));$switchLayout.Controls.Add($panel)
+        $card.Controls.AddRange(@($start,$stop));$u.ActionButtons+=@($start,$stop);$body.Controls.Add($card);$cards+=@{Panel=$card;Label=$label;Path=$path}
     }
-    $actions=New-Object Windows.Forms.FlowLayoutPanel;$actions.Width=830;$actions.Height=45
-    foreach($spec in @(@('Refresh','Refresh status'),@('Admin','Reopen with UAC'),@('Desktop','Create desktop switcher'))){$b=New-Object Windows.Forms.Button;$b.Text=$spec[1];$b.AutoSize=$true;$u[$spec[0]]=$b;$actions.Controls.Add($b)};$switchLayout.Controls.Add($actions)
-    $installer=New-Object Windows.Forms.FlowLayoutPanel;$installer.Dock='Fill';$installer.FlowDirection='TopDown';$installer.WrapContents=$false;$installer.AutoScroll=$true;$installPage.Controls.Add($installer)
-    $instructions=New-Object Windows.Forms.Label;$instructions.Width=810;$instructions.Height=90;$instructions.Text='Click Setup both signers automatically. Approve UAC and one setup review. Both inspected packages are downloaded first; existing MSI CRIS Signer installations are removed, both signers install into separate folders, and all three desktop shortcuts are created. Unsigned packages are accepted only at the inspected SHA256 hashes. Existing unrelated applications and shortcuts are preserved.';$installer.Controls.Add($instructions)
-    $u.Setup=New-Object Windows.Forms.Button;$u.Setup.Text='Setup BOTH signers automatically (Administrator)';$u.Setup.Width=660;$u.Setup.Height=44;$u.Setup.BackColor=[Drawing.Color]::LightSteelBlue;$installer.Controls.Add($u.Setup)
-    $targets=New-Object Windows.Forms.Label;$targets.Width=810;$targets.Height=72;$targets.Text="IPAS: C:\CrisSigner\CrisSigner_IPAS\CrisSigner.exe - port 2068`r`nIRWCMS/IRCEP: C:\CrisSigner\CrisSigner_IRWCMS\CrisSigner.exe - port 2039`r`nDesktop: CRISSigner_IPAS, CRISSigner_IRWCMS, CRIS Signer Switcher (UAC).";$installer.Controls.Add($targets)
-    $u.Advanced=New-Object Windows.Forms.CheckBox;$u.Advanced.Text='Advanced: inspect individual packages';$u.Advanced.AutoSize=$true;$installer.Controls.Add($u.Advanced)
-    $u.Choice=New-Object Windows.Forms.ComboBox;$u.Choice.DropDownStyle='DropDownList';$u.Choice.Width=400;foreach($d in Get-CrisCatalog){[void]$u.Choice.Items.Add($d.Id)};$u.Choice.SelectedIndex=0;$installer.Controls.Add($u.Choice)
-    $u.Msi=New-Object Windows.Forms.TextBox;$u.Msi.Width=810;$installer.Controls.Add($u.Msi)
-    $ib=New-Object Windows.Forms.FlowLayoutPanel;$ib.Width=810;$ib.Height=45
-    foreach($spec in @(@('Download','Download package...'),@('Browse','Select local MSI...'),@('Inspect','Inspect MSI'),@('Install','Install selected signer...'))){$b=New-Object Windows.Forms.Button;$b.Text=$spec[1];$b.AutoSize=$true;$u[$spec[0]]=$b;$ib.Controls.Add($b)};$installer.Controls.Add($ib)
-    $u.PlanText=New-Object Windows.Forms.TextBox;$u.PlanText.Multiline=$true;$u.PlanText.ReadOnly=$true;$u.PlanText.ScrollBars='Vertical';$u.PlanText.Width=810;$u.PlanText.Height=150;$installer.Controls.Add($u.PlanText)
-    $u.AdvancedControls=@($u.Choice,$u.Msi,$ib,$u.PlanText);foreach($control in $u.AdvancedControls){$control.Visible=$false}
-    $u.Advanced.Add_CheckedChanged({foreach($control in $script:CrisUi.AdvancedControls){$control.Visible=$script:CrisUi.Advanced.Checked}})
-    $u.Progress=New-Object Windows.Forms.ProgressBar;$u.Progress.Dock='Fill';$u.Progress.Style='Continuous';$root.Controls.Add($u.Progress,0,1)
-    $u.Log=New-Object Windows.Forms.TextBox;$u.Log.Multiline=$true;$u.Log.ReadOnly=$true;$u.Log.ScrollBars='Vertical';$u.Log.Dock='Fill';$u.Log.Text="Session log: $script:DscSessionDirectory`r`n";$root.Controls.Add($u.Log,0,2)
-    $bottom=New-Object Windows.Forms.FlowLayoutPanel;$bottom.Dock='Fill';$u.Cancel=New-Object Windows.Forms.Button;$u.Cancel.Text='Cancel remaining';$u.Cancel.AutoSize=$true;$u.Cancel.Enabled=$false;$u.Close=New-Object Windows.Forms.Button;$u.Close.Text='Close';$u.Status=New-Object Windows.Forms.Label;$u.Status.Width=620;$u.Status.Height=32;$bottom.Controls.AddRange(@($u.Cancel,$u.Close,$u.Status));$root.Controls.Add($bottom,0,3)
+    $u.Advanced=New-Object Windows.Forms.CheckBox;$u.Advanced.Text='Advanced package tools (optional)';$u.Advanced.AutoSize=$true;$body.Controls.Add($u.Advanced);$u.Advanced.Visible=-not $switcherOnly
+    $advanced=New-Object Windows.Forms.FlowLayoutPanel;$advanced.Height=290;$advanced.FlowDirection='TopDown';$advanced.WrapContents=$false;$advanced.AutoScroll=$true;$body.Controls.Add($advanced);$advanced.Visible=$false;$wide+= $advanced
+    $u.Choice=New-Object Windows.Forms.ComboBox;$u.Choice.DropDownStyle='DropDownList';$u.Choice.Width=350;foreach($d in Get-CrisCatalog){[void]$u.Choice.Items.Add($d.Id)};$u.Choice.SelectedIndex=0;$advanced.Controls.Add($u.Choice)
+    $u.Msi=New-Object Windows.Forms.TextBox;$u.Msi.Width=650;$advanced.Controls.Add($u.Msi)
+    $ib=New-Object Windows.Forms.FlowLayoutPanel;$ib.Width=650;$ib.Height=44
+    foreach($spec in @(@('Download','Download package...'),@('Browse','Select local MSI...'),@('Inspect','Inspect MSI'),@('Install','Install selected signer...'))){$b=New-CrisButton $spec[1];$u[$spec[0]]=$b;$ib.Controls.Add($b)};$advanced.Controls.Add($ib)
+    $u.PlanText=New-Object Windows.Forms.TextBox;$u.PlanText.Multiline=$true;$u.PlanText.ReadOnly=$true;$u.PlanText.ScrollBars='Vertical';$u.PlanText.Width=650;$u.PlanText.Height=150;$advanced.Controls.Add($u.PlanText)
+    $u.AdvancedControls=@($advanced);$u.Advanced.Add_CheckedChanged({foreach($control in $script:CrisUi.AdvancedControls){$control.Visible=$script:CrisUi.Advanced.Checked}})
+    $u.Progress=New-Object Windows.Forms.ProgressBar;$u.Progress.Dock='Fill';$u.Progress.Style='Continuous';$root.Controls.Add($u.Progress,0,3)
+    $u.Status=New-Object Windows.Forms.Label;$u.Status.Dock='Fill';$u.Status.AutoEllipsis=$true;$u.Status.Text='Checking signer status...';$u.Status.ForeColor=[Drawing.Color]::FromArgb(15,61,108);$root.Controls.Add($u.Status,0,4)
+    $u.Details=New-Object Windows.Forms.CheckBox;$u.Details.Text='Show details / session log';$u.Details.Dock='Fill';$root.Controls.Add($u.Details,0,5)
+    $u.Log=New-Object Windows.Forms.TextBox;$u.Log.Multiline=$true;$u.Log.ReadOnly=$true;$u.Log.ScrollBars='Vertical';$u.Log.Dock='Fill';$u.Log.Text="Session log: $script:DscSessionDirectory`r`n";$root.Controls.Add($u.Log,0,6)
+    $u.Details.Add_CheckedChanged({$script:CrisUi.Root.RowStyles[6].Height=if($script:CrisUi.Details.Checked){110}else{0}})
+    $bottom=New-Object Windows.Forms.FlowLayoutPanel;$bottom.Dock='Fill';$bottom.FlowDirection='RightToLeft';$bottom.WrapContents=$false;$bottom.AutoScroll=$true;$bottom.Margin=New-Object Windows.Forms.Padding(0)
+    $u.Close=New-CrisButton 'Close';$u.Cancel=New-CrisButton 'Cancel remaining';$u.Cancel.Enabled=$false
+    $u.Desktop=New-CrisButton 'Create desktop switcher only';$u.Desktop.Visible=-not $switcherOnly
+    $u.Admin=New-CrisButton 'Administrator access';$u.Admin.Visible=-not $IsAdmin
+    $bottom.Controls.AddRange(@($u.Close,$u.Cancel,$u.Desktop,$u.Admin));$root.Controls.Add($bottom,0,7);$f.CancelButton=$u.Close
+    $u.ResizeCards=$cards;$u.WideControls=$wide
+    $body.Add_Resize({$c=$script:CrisUi;if(-not $c){return};$width=[Math]::Max(400,$c.Body.ClientSize.Width-26);foreach($card in $c.ResizeCards){$card.Panel.Width=$width;$card.Label.Width=$width-24;$card.Path.Width=$width-24};foreach($control in $c.WideControls){$control.Width=$width}})
     function Confirm-CrisUi($message,$title){
         # Reuse the Continue/Cancel dialog without leaking the Option 3 owner.
         $saved=$script:OtherUi;$script:OtherUi=@{Form=$script:CrisUi.Form};try{return (Show-OtherContinueDialog $message $title)}finally{$script:OtherUi=$saved}
     }
     function Refresh-CrisUi {
-        foreach($d in Get-CrisCatalog){try{$state=Get-CrisState $d.Id;$script:CrisUi.Rows[$d.Id].Text=$d.Name+': '+$state.State+' - '+$state.Detail;$script:CrisUi.Rows[$d.Id].ForeColor=[Drawing.Color]::FromName($state.Color)}catch{$script:CrisUi.Rows[$d.Id].Text=$d.Name+': UNVERIFIED - '+$_.Exception.Message;$script:CrisUi.Rows[$d.Id].ForeColor=[Drawing.Color]::DarkOrange}}
+        foreach($d in Get-CrisCatalog){try{$state=Get-CrisState $d.Id;$script:CrisUi.Rows[$d.Id].Text=$d.Name+': '+$state.State+' | Port '+$d.Port;$script:CrisUi.Rows[$d.Id].ForeColor=[Drawing.Color]::FromName($state.Color);if($script:CrisUi.StateSnapshots[$d.Id] -ne ($state.State+'|'+$state.Detail)){$script:CrisUi.Log.AppendText($d.Name+': '+$state.State+' - '+$state.Detail+"`r`n");$script:CrisUi.StateSnapshots[$d.Id]=$state.State+'|'+$state.Detail}}catch{$script:CrisUi.Rows[$d.Id].Text=$d.Name+': UNVERIFIED - '+$_.Exception.Message;$script:CrisUi.Rows[$d.Id].ForeColor=[Drawing.Color]::DarkOrange}}
     }
     function Invoke-CrisUiWork([scriptblock]$work){
-        $c=$script:CrisUi;if($c.Busy){return};$c.Busy=$true;$script:CancelRequested=$false;$c.Cancel.Enabled=$true;$c.Close.Enabled=$false;$c.Progress.Value=10
-        try{& $work;$c.Progress.Value=100;$c.Status.Text=$(if($script:CancelRequested){'Cancelled after current operation.'}else{'Operation finished; see log and verified status.'})}
+        $c=$script:CrisUi;if($c.Busy){return};$c.Busy=$true;$script:CancelRequested=$false;$c.Cancel.Enabled=$true;$c.Close.Enabled=$false;$c.Progress.Value=0
+        try{& $work;if(-not $script:CancelRequested){$c.Progress.Value=100};$c.Status.Text=$(if($script:CancelRequested){'Cancelled after current operation.'}else{'Ready. Check the signer status above; open details if needed.'})}
         catch{Write-DscError $_ 'CRIS GUI';$c.Log.AppendText('ERROR: '+$_.Exception.Message+"`r`n");$c.Status.Text='Action failed / blocked. See log.'}
         finally{$c.Busy=$false;$c.Cancel.Enabled=$false;$c.Close.Enabled=$true;Refresh-CrisUi;Save-DscSession $Results}
     }
@@ -3765,9 +3790,8 @@ function Start-CrisGui {
 
     $u.Admin.Add_Click({Invoke-CrisUiWork {
         if($IsAdmin){Say 'Already running as administrator.';return}
-        if(-not $NativeSourcePath -or -not (Test-Path -LiteralPath $NativeSourcePath)){throw 'Run the local install.ps1 or extracted website bundle to reopen this exact version with UAC.'}
         if(Confirm-CrisUi 'Reopen this local troubleshooter as administrator? Approve the Windows UAC prompt.' 'Administrator approval'){
-            $crisArguments='-NoProfile -STA -File "'+$NativeSourcePath+'" -Mode crisgui';Start-Process -FilePath "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -ArgumentList $crisArguments -Verb RunAs -ErrorAction Stop|Out-Null
+            $local=Save-CrisRuntimeSource;$crisArguments='-NoProfile -STA -File "'+$local+'" -Mode crisgui';Start-Process -FilePath "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -ArgumentList $crisArguments -Verb RunAs -ErrorAction Stop|Out-Null
         }
     }})
     $u.Desktop.Add_Click({Invoke-CrisUiWork {if(Confirm-CrisUi 'Create a desktop switcher shortcut and a local copy of this script? The shortcut requests UAC. Existing signer shortcuts are preserved.' 'Desktop switcher'){Save-CrisDesktopSwitcher -Confirmed}}})
@@ -3793,11 +3817,11 @@ function Start-CrisGui {
     $u.Cancel.Add_Click({$script:CancelRequested=$true;$script:CrisUi.Status.Text='Cancellation requested; an active MSI must finish.'})
     $u.Close.Add_Click({$script:CrisUi.Form.Close()});$f.Add_FormClosing({param($sender,$e)if($script:CrisUi.Busy){$e.Cancel=$true}})
     $u.Timer=New-Object Windows.Forms.Timer;$u.Timer.Interval=3000;$u.Timer.Add_Tick({if(-not $script:CrisUi.Busy){Refresh-CrisUi}})
-    $f.Add_Shown({Refresh-CrisUi;$script:CrisUi.Timer.Start();$script:CrisUi.Status.Text=$(if($IsAdmin){'Administrator session ready.'}else{'Read-only status. Click Reopen with UAC for changes.'});if($RequestedMode -eq 'crisinstall' -and $IsAdmin){$script:CrisUi.Setup.PerformClick()}})
+    $f.Add_Shown({Refresh-CrisUi;$script:CrisUi.Timer.Start();$script:CrisUi.Status.Text=$(if($IsAdmin){$(if($script:CrisUi.SwitcherOnly){'Choose Start / Switch for the signer you need. Stop closes only that signer.'}else{'Ready. Check status above. Install / Repair only if needed; otherwise choose Start / Switch.'})}else{$(if($script:CrisUi.SwitcherOnly){'Use Administrator access, then choose Start / Switch.'}else{'Check status first. Install / Repair requests UAC; Administrator access enables switching.'})});if($RequestedMode -eq 'crisinstall' -and $IsAdmin){$script:CrisUi.Setup.PerformClick()}})
     try{[void]$f.ShowDialog()}finally{$u.Timer.Stop();$u.Timer.Dispose();$script:Ui=$savedUi;$script:UiLog=$savedLog;$script:UiStatus=$savedStatus;$f.Dispose();$script:CrisUi=$null}
 }
 
-    if ($RequestedMode -in 'crisgui','crisinstall') { Start-CrisGui } elseif ($RequestedMode -eq 'othergui') { Start-OtherGui } elseif ($Mode -eq 'gui') { Start-Gui } else { Start-Console }
+    if ($RequestedMode -in 'crisgui','crisinstall','crisswitch') { Start-CrisGui } elseif ($RequestedMode -eq 'othergui') { Start-OtherGui } elseif ($Mode -eq 'gui') { Start-Gui } else { Start-Console }
     } finally { Save-DscSession $Results }
 }
 function Invoke-DscSelection([string]$Selection) {
@@ -3808,69 +3832,78 @@ function Invoke-DscSelection([string]$Selection) {
     }
 }
 function Show-DscMenu {
-    $interactive = $Host.Name -eq 'ConsoleHost' -and -not [Console]::IsOutputRedirected
-    $width = 94
-    if ($interactive) {
-        try {
-            $width = [Math]::Max(12, [Math]::Min(94, $Host.UI.RawUI.WindowSize.Width - 1))
+    param([int]$ViewportWidth=0,[int]$ViewportHeight=0)
+    $interactive=$Host.Name -eq 'ConsoleHost' -and -not [Console]::IsOutputRedirected
+    if($ViewportWidth -le 0 -or $ViewportHeight -le 0){
+        try{
+            $size=$Host.UI.RawUI.WindowSize
+            if($ViewportWidth -le 0){$ViewportWidth=$size.Width}
+            if($ViewportHeight -le 0){$ViewportHeight=$size.Height}
+        }catch{}
+    }
+    if($ViewportWidth -le 0){$ViewportWidth=80}
+    if($ViewportHeight -le 0){$ViewportHeight=25}
+    $width=[Math]::Max(12,[Math]::Min(94,$ViewportWidth-1))
+    $inside=$width-4;$compact=$width -lt 70
+    if($interactive){
+        try{
+            if(-not $script:DscMenuTheme){$script:DscMenuTheme=@{Background=$Host.UI.RawUI.BackgroundColor;Foreground=$Host.UI.RawUI.ForegroundColor;Title=$Host.UI.RawUI.WindowTitle}}
+            $Host.UI.RawUI.BackgroundColor='DarkBlue';$Host.UI.RawUI.ForegroundColor='White'
+            $Host.UI.RawUI.WindowTitle='Digital Signing Troubleshooter | Windows PowerShell'
             Clear-Host
-        } catch { }
+        }catch{}
     }
-    $inside = $width - 4
-    $rule = '+' + ('-' * ($width - 2)) + '+'
-    function Write-MenuRow([string]$Text = '', [ConsoleColor]$Color = 'Gray', [switch]$Bold) {
-        $rowPrefix = ''; $rowSuffix = ''
-        if ($Bold -and $interactive -and $Host.UI.SupportsVirtualTerminal) {
-            $rowPrefix = [string][char]27 + '[1m'
-            $rowSuffix = [string][char]27 + '[22m'
+    $rule='├'+('─'*($width-2))+'┤'
+    $topRule='┌'+('─'*($width-2))+'┐';$bottomRule='└'+('─'*($width-2))+'┘'
+    function Write-MenuRow([string]$Text='',[ConsoleColor]$Color='Gray',[switch]$Bold){
+        $prefix='';$suffix=''
+        if($Bold -and $interactive -and $Host.UI.SupportsVirtualTerminal){$prefix=[string][char]27+'[1m';$suffix=[string][char]27+'[22m'}
+        while($Text.Length -gt $inside){
+            $split=$Text.LastIndexOf(' ',$inside);if($split -lt 1){$split=$inside}
+            Write-Host ($prefix+'│ '+$Text.Substring(0,$split).PadRight($inside)+' │'+$suffix) -ForegroundColor $Color
+            $Text=$Text.Substring($split).TrimStart()
         }
-        if (-not $Text.Length) {
-            Write-Host ('| ' + (' ' * $inside) + ' |') -ForegroundColor $Color
-            return
-        }
-        while ($Text.Length -gt $inside) {
-            $split = $Text.LastIndexOf(' ', $inside)
-            if ($split -lt 1) { $split = $inside }
-            Write-Host ($rowPrefix + '| ' + $Text.Substring(0, $split).PadRight($inside) + ' |' + $rowSuffix) -ForegroundColor $Color
-            $Text = $Text.Substring($split).TrimStart()
-        }
-        Write-Host ($rowPrefix + '| ' + $Text.PadRight($inside) + ' |' + $rowSuffix) -ForegroundColor $Color
+        Write-Host ($prefix+'│ '+$Text.PadRight($inside)+' │'+$suffix) -ForegroundColor $Color
     }
-    Write-Host ''
-    Write-Host $rule -ForegroundColor Cyan
-    Write-MenuRow 'Digital Signing Service 4.1.8 Troubleshooter ( for E-Office )' Yellow -Bold
-    Write-MenuRow 'Native PowerShell | Build 2026.11.11.1' White
-    Write-MenuRow
+    Write-Host $topRule -ForegroundColor Cyan
+    if($compact){Write-MenuRow 'Digital Signing Troubleshooter' Yellow -Bold;Write-MenuRow '>_ PowerShell | 2026.11.11.1' White}
+    else{Write-MenuRow 'Digital Signing Service 4.1.8 Troubleshooter ( for E-Office )' Yellow -Bold;Write-MenuRow '>_ Windows PowerShell | Build 2026.11.11.1' White}
     Write-MenuRow 'Developed by Girish Tiwari' Gray
-    Write-MenuRow 'Senior Information Technology, Certified Microsoft Engineer' Gray
+    if($ViewportHeight -ge 23){
+        if($compact){Write-MenuRow 'Senior IT / Microsoft Engineer' Gray}
+        else{Write-MenuRow 'Senior Information Technology, Certified Microsoft Engineer' Gray}
+    }
     Write-Host $rule -ForegroundColor Cyan
-    Write-MenuRow
-    Write-MenuRow 'Option 1. PowerShell Console Method' Green
-    Write-MenuRow
-    Write-MenuRow 'Option 2. Windows GUI-New Window Console Method' Cyan
-    Write-MenuRow
-    Write-MenuRow 'Option 3. Reset Java & setting for other Websites' Cyan
-    Write-MenuRow
-    Write-MenuRow 'Option 4. Refresh menu' Yellow
-    Write-MenuRow
-    Write-MenuRow 'Option 5. CRIS Signer Switcher & Installer' Cyan
-    Write-MenuRow
-    Write-MenuRow 'Option 6. APAR Signer Service 7.0.2 Troubleshooter (GUI)' Cyan
-    Write-MenuRow
+    if($compact){
+        Write-MenuRow 'Option 1. PowerShell Console' Green
+        Write-MenuRow 'Option 2. E-Office 4.1.8 GUI' Cyan
+        Write-MenuRow 'Option 3. Java & website settings' Cyan
+        Write-MenuRow 'Option 4. Refresh menu' Yellow
+        Write-MenuRow 'Option 5. CRIS Signer Switcher' Cyan
+        Write-MenuRow 'Option 6. APAR 7.0.2 GUI' Cyan
+    }else{
+        Write-MenuRow 'Option 1. PowerShell Console Method' Green
+        Write-MenuRow 'Option 2. Windows GUI-New Window Console Method' Cyan
+        Write-MenuRow 'Option 3. Reset Java & setting for other Websites' Cyan
+        Write-MenuRow 'Option 4. Refresh menu' Yellow
+        Write-MenuRow 'Option 5. CRIS Signer Switcher & Installer' Cyan
+        Write-MenuRow 'Option 6. APAR Signer Service 7.0.2 Troubleshooter (GUI)' Cyan
+    }
     Write-MenuRow 'Option 7. Exit' Gray
-    Write-MenuRow
     Write-Host $rule -ForegroundColor Cyan
-    Write-MenuRow 'Checks run first. Review and select repairs before applying.' White
-    Write-MenuRow 'Repairs require an Administrator session.' Gray
-    Write-MenuRow
-    Write-MenuRow ('Session logs: ' + $script:DscSessionDirectory) DarkGray
-    Write-Host $rule -ForegroundColor Cyan
-    Write-Host ''
+    Write-MenuRow 'Review before applying repairs.' White
+    Write-MenuRow 'Repairs need Administrator rights.' Gray
+    if($ViewportHeight -ge 20){
+        $log='Logs: '+$script:DscSessionDirectory
+        if($log.Length -gt $inside){$log=$log.Substring(0,$inside-3)+'...'}
+        Write-MenuRow $log DarkGray
+    }
+    Write-Host $bottomRule -ForegroundColor Cyan
 }
 if ($Mode -ne 'menu') { Invoke-DscSelection $Mode; return }
 while ($true) {
     Show-DscMenu
-    $menuInstruction = 'Select any one option to proceed further (1-7):'
+    $menuInstruction = 'Select any one option (1-7):'
     Write-Host $menuInstruction -ForegroundColor Black -BackgroundColor Yellow
     $choice = Read-Host 'Choose 1-7'
     switch ($choice) {
@@ -3889,6 +3922,7 @@ while ($true) {
     Write-Host ('Digital Signing Service 4.1.8 Troubleshooter ( for E-Office ) stopped: ' + $_.Exception.Message) -ForegroundColor Red
 } finally {
     Save-DscSession -State $(if ($script:DscSession.ErrorCount) { 'CompletedWithErrors' } else { 'Completed' })
+    if($script:DscMenuTheme){try{$Host.UI.RawUI.BackgroundColor=$script:DscMenuTheme.Background;$Host.UI.RawUI.ForegroundColor=$script:DscMenuTheme.Foreground;$Host.UI.RawUI.WindowTitle=$script:DscMenuTheme.Title}catch{};$script:DscMenuTheme=$null}
     Write-Host ('Session logs: ' + $script:DscSessionDirectory)
 }
 } @args

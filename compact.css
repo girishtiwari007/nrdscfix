@@ -159,3 +159,17 @@ footer{display:flex;flex-direction:column;align-items:center;text-align:center;g
 #page-view-counter img {
     vertical-align: middle;
 }
+
+/* Compact PowerShell workspace; resource menus and other panels are unchanged. */
+.standby-card.ps-workspace{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.05fr);gap:10px 14px;padding:12px 14px;background:#102b50;border:1px solid #2768b4;border-radius:8px;box-shadow:0 8px 24px #0b28421c}
+.ps-titlebar,.ps-guidance,.ps-workspace>.micro{grid-column:1/-1}
+.ps-titlebar{display:flex;justify-content:space-between;align-items:center;gap:10px;border-bottom:1px solid #ffffff26;padding-bottom:8px;color:#f2f7ff}
+.ps-titlebar>div{display:flex;gap:10px;align-items:center;font-size:16px;font-weight:750}.ps-titlebar small{display:block;color:#a8c8ef;font-size:9px;letter-spacing:1.4px;margin-top:2px}.ps-glyph{display:inline-grid;place-items:center;width:32px;height:29px;background:#2270ca;color:white;font:700 20px Consolas,monospace;transform:skew(-8deg)}.ps-admin{border:1px solid #7fb2ec66;padding:4px 8px;font-size:10px;color:#cbe1ff;border-radius:3px;white-space:nowrap}
+.ps-guidance{display:flex;align-items:center;justify-content:space-between;gap:10px}.ps-workspace .ps-guidance h3{margin:0;color:white;font-size:18px}.ps-workspace .standby-sequence{margin:0;transform:scale(.8);transform-origin:right center}
+.ps-workspace>.steps{grid-column:1;padding:9px 11px;margin:0;background:#f3f7ff;border:1px solid #dce7f6;border-radius:5px;min-width:0}.ps-workspace>.steps li{padding:6px 4px;gap:8px}.ps-workspace>.steps strong{font-size:13px}.ps-workspace>.steps p{font-size:12px;line-height:1.4;margin:3px 0 0;color:#29425f}.ps-workspace .preferred-option{display:inline-block}
+.ps-workspace>.standby-command{grid-column:2;align-self:stretch;display:flex;flex-direction:column;margin:0;padding:12px;border:1px solid #edc558;border-radius:5px;box-shadow:0 0 0 2px #edc55825;background:#071a33;min-width:0}.ps-workspace>.standby-command pre{white-space:pre-wrap;overflow-wrap:anywhere;margin:14px 0 0;font:600 12px/1.7 Consolas,'Cascadia Mono',monospace;color:#e7f2ff;user-select:text}.ps-workspace>.standby-command>div{gap:8px}.ps-workspace .copy-action{gap:5px}.ps-workspace .copy-hint{font-size:10px;white-space:normal;letter-spacing:0}.ps-workspace .small-button{border-radius:3px;padding:8px 11px;font-size:12px;min-height:34px}.ps-workspace>.micro{margin:0;color:#b7d1ef;font-size:10px;line-height:1.4}.ps-workspace :is(button,summary,a):focus-visible{outline:3px solid #ffd45b;outline-offset:3px}
+@media(max-width:900px){.standby-card.ps-workspace{grid-template-columns:minmax(0,1fr)}.ps-workspace>.steps,.ps-workspace>.standby-command{grid-column:1}.ps-titlebar>div{font-size:15px}.ps-admin{font-size:9px}.ps-workspace .ps-guidance h3{font-size:17px}}
+@media(prefers-reduced-motion:reduce){.ps-workspace *{animation:none!important;transition:none!important}}
+.ps-workspace>.steps p{font-size:12px!important;line-height:1.4!important;padding:4px 6px;margin-top:3px}
+.comfortable-view .ps-workspace{padding:16px;gap:14px}.comfortable-view .ps-workspace>.steps strong{font-size:14px}.comfortable-view .ps-workspace>.steps p{font-size:14px!important;line-height:1.55!important}.comfortable-view .ps-workspace>.standby-command pre{font-size:13px}
+.ps-titlebar,.ps-workspace>.standby-command>div{flex-wrap:wrap}.ps-workspace>.standby-command>div>span{font-size:9px;letter-spacing:.6px}
