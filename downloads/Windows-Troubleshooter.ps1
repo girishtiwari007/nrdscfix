@@ -1,4 +1,4 @@
-# Copyright (c) 2026 Girish Tiwari. All rights reserved.
+﻿# Copyright (c) 2026 Girish Tiwari. All rights reserved.
 # Use is subject to LICENSE.txt. This notice does not conceal source code.
 <#
 Digital Signing Service 4.1.8 Troubleshooter ( for E-Office ) - native PowerShell edition.
@@ -7,7 +7,7 @@ Trellix/AMSI and organization policy remain active. If blocked, stop and ask IT 
 #>
 & {
 [CmdletBinding()]
-param([ValidateSet('menu','console','gui','check','othergui','crisgui','crisinstall')][string]$Mode = 'menu')
+param([ValidateSet('menu','console','gui','check','othergui','crisgui','crisinstall','apargui')][string]$Mode = 'menu')
 $script:DscEntryText = '& {' + $MyInvocation.MyCommand.Definition + [Environment]::NewLine + '} @args'
 if ($env:OS -ne 'Windows_NT') { throw 'This tool requires Windows.' }
 if ($ExecutionContext.SessionState.LanguageMode -ne 'FullLanguage') {
@@ -16,7 +16,7 @@ if ($ExecutionContext.SessionState.LanguageMode -ne 'FullLanguage') {
 # Session logging is embedded so each published entry point remains self-contained.
 function Initialize-DscSession([string]$Repository, [string]$ModeName) {
     $script:DscSession = [ordered]@{
-        Schema = 1; ToolVersion = '2026.11.04.2'; Repository = $Repository
+        Schema = 1; ToolVersion = '2026.11.11.1'; Repository = $Repository
         SessionId = [guid]::NewGuid().ToString('N'); StartedUtc = [DateTime]::UtcNow.ToString('o')
         UpdatedUtc = ''; Mode = $ModeName; PowerShell = $PSVersionTable.PSVersion.ToString()
         State = 'Running'; ErrorCount = 0; Checks = @(); Improvements = @()
@@ -175,7 +175,7 @@ function Invoke-DscNative {
     $Results = $null
     $script:DscSession.Mode = $RequestedMode
     try {
-    if ($RequestedMode -in 'gui','othergui','crisgui','crisinstall' -and [Threading.Thread]::CurrentThread.ApartmentState -ne 'STA') {
+    if ($RequestedMode -in 'gui','othergui','crisgui','crisinstall','apargui' -and [Threading.Thread]::CurrentThread.ApartmentState -ne 'STA') {
         Write-Host 'Windows popups require STA. Open Windows PowerShell (powershell.exe -STA), then run the native command again, or choose console mode.' -ForegroundColor Yellow
         return
     }
@@ -184,7 +184,7 @@ $ProgressPreference = 'SilentlyContinue'
 $TestRoot = $env:DSSF_TESTROOT
 $TestMode = -not [string]::IsNullOrEmpty($TestRoot)
 $CheckOnly = ($RequestedMode -eq 'check')
-$Mode = $(if ($RequestedMode -in 'gui','othergui','crisgui','crisinstall') { 'gui' } else { 'console' })
+$Mode = $(if ($RequestedMode -in 'gui','othergui','crisgui','crisinstall','apargui') { 'gui' } else { 'console' })
 $script:Ui = $null; $script:UiJavaOffer = $null; $script:DssInstallOffered=$false; $script:InitialReviewShown=$false; $script:CancelRequested=$false; $script:RepairRunning=$false
 $script:UiLog = $null
 $script:UiStatus = $null
@@ -214,11 +214,27 @@ $Cfg = [ordered]@{
     PackageFallbackUrl  = 'https://drive.usercontent.google.com/download?id=13TrQwUAevLNBgAnR5VF4Hmd4E2-wSwtm&export=download&confirm=t'
     PackageSha256       = ''
 }
+# Profiles share diagnostics; installation/process identity stays version-specific.
+function Set-DssProfile($Config, [string]$Selection) {
+    if ($Selection -eq 'apargui') {
+        $Config.DssVersion='7.0.2'; $Config.Port=55103
+        $Config.EditionName='APAR Signer Service 7.0.2 Troubleshooter'
+        $Config.PackageUrl='https://drive.usercontent.google.com/download?authuser=0&export=download&id=1X_IpIZjgcjC6A0mvDMef2XJ1vk-iTdpT'
+        $Config.PackageFallbackUrl=$Config.PackageUrl+'&confirm=t'
+        $Config.PackageSha256=''
+        $Config.MsiSha256='C780584D7536D905BCBA73FBF7BB643D8B57F24B2CEFAB55AD3894829E658ADD'
+        $Config.ProductCode='{E18A6276-70FE-4920-AFDD-7BBC15079FC3}'
+        $Config.UpgradeCode='{54092B7B-78F2-48E2-AA2F-9071523F6BC4}'
+    }
+    $Config.RequiredDssPath="C:\Program Files\Digital Signer Service\$($Config.DssVersion)\Digital Signer Service.exe"
+    $Config.IsLiveUrl="https://$($Config.SignerHost):$($Config.Port)/check/isLive"
+}
+Set-DssProfile $Cfg $RequestedMode
 # where DigitalSignerService 4.1.8 lives on a normal install - checked FIRST for item 3
 $script:DiagnosticsOnly=$true
 $script:ReviewApproved=$false
 $script:DscSession['Edition']=$Cfg.EditionName
-$Cfg.RequiredDssPath = 'C:\Program Files\Digital Signer Service\4.1.8\Digital Signer Service.exe'
+# RequiredDssPath is set by the selected profile above.
 $Cfg.DssExePaths = @($Cfg.RequiredDssPath)
 if ($Cfg.AllowDssDownload -and $env:DSSF_PKGURL) { $Cfg.PackageUrl = $env:DSSF_PKGURL }
 if ($env:DSSF_PKGSHA256) { $Cfg.PackageSha256 = $env:DSSF_PKGSHA256 }
@@ -284,7 +300,7 @@ public static class DssfHttpV3 {
         Uri u;
         if (!Uri.TryCreate(url, UriKind.Absolute, out u) || u.Scheme != "https" ||
             !String.Equals(u.Host, "eoffsigner.eoffice.gov.in", StringComparison.OrdinalIgnoreCase) ||
-            u.Port != 55101 || u.AbsolutePath != "/check/isLive" || !String.IsNullOrEmpty(u.UserInfo) ||
+            (u.Port != 55101 && u.Port != 55103) || u.AbsolutePath != "/check/isLive" || !String.IsNullOrEmpty(u.UserInfo) ||
             !String.IsNullOrEmpty(u.Query) || !String.IsNullOrEmpty(u.Fragment)) return false;
         if (errors != SslPolicyErrors.RemoteCertificateChainErrors || statuses == null || statuses.Length == 0 ||
             starts == null || ends == null || starts.Length == 0 || starts.Length != ends.Length) return false;
@@ -525,8 +541,8 @@ function Find-DssExe {
         if (Test-Path -LiteralPath $d -PathType Leaf) { $d = Split-Path -Parent $d }
         if (-not (Test-Path -LiteralPath $d)) { continue }
         $exe = Get-ChildItem -LiteralPath $d -Recurse -Depth 2 -ErrorAction SilentlyContinue |
-               Where-Object { -not $_.PSIsContainer -and $_.Name -match '^(Digital ?Signer ?Service)(\.exe)?$' } | Select-Object -First 1
-        if ($exe) { return $exe.FullName }
+               Where-Object { -not $_.PSIsContainer -and $_.Name -match '^(Digital ?Signer ?Service)(\.exe)?$' -and ($_.FullName -match ('[\\/]'+[regex]::Escape($Cfg.DssVersion)+'[\\/]') -or (Get-ExeVersion $_.FullName) -eq $Cfg.DssVersion) } | Select-Object -First 1
+        if ($exe -and ((Get-ExeVersion $exe.FullName) -eq $Cfg.DssVersion -or $exe.FullName -match ('[\\/]'+[regex]::Escape($Cfg.DssVersion)+'[\\/]'))) { return $exe.FullName }
     }
     return $null
 }
@@ -542,12 +558,26 @@ function Get-DssProcesses {
     }
     foreach ($p in Get-Process -ErrorAction SilentlyContinue) {
         $path = ''; try { $path = $p.Path } catch { Write-DscError $_ 'Caught exception';}
-        if ($p.ProcessName -match '(?i)signer' -or $path -match '(?i)\\Digital Signer Service\\') { $res += [pscustomobject]@{ Id = $p.Id; Name = $p.ProcessName; Path = $path } }
+        if (Test-IsDssProcess ([pscustomobject]@{Name=$p.ProcessName;Path=$path})) { $res += [pscustomobject]@{ Id = $p.Id; Name = $p.ProcessName; Path = $path } }
     }
     return $res
 }
 
-function Test-IsDssProcess($pi) { return ($pi.Name -match '(?i)signer' -or $pi.Path -match '(?i)Digital ?Signer ?Service') }
+function Test-IsDssProcess($pi) {
+    if (-not $pi.Path) { return $false }
+    $path="$($pi.Path)".Trim('"').Replace('/','\')
+    foreach($exe in $Cfg.DssExePaths) {
+        if($path -ieq "$exe".Replace('/','\')) { return $true }
+        # Only the selected installation's bundled Java may own its listener.
+        $root=(Split-Path -Parent $exe).TrimEnd('\')+'\'
+        if($path.StartsWith($root,[StringComparison]::OrdinalIgnoreCase) -and
+           [IO.Path]::GetFileName($path) -match '^(java|javaw)\.exe$') { return $true }
+    }
+    return $false
+}
+function Test-IsOtherDssProcess($pi) {
+    return ($pi.Path -match '(?i)[\\/]Digital Signer Service[\\/](4\.1\.8|7\.0\.2)[\\/]' -and -not (Test-IsDssProcess $pi))
+}
 
 # ---------------------------------------------------------------- installer package (embedded / chosen / nearby)
 $PayloadMarker = '#__DSSF_' + 'PAYLOAD_ZIP__'
@@ -698,12 +728,12 @@ function Get-WebFileResume([string]$Url, [string]$OutFile, [int]$Tries = 4) {
                     $last = Get-Date
                     $pct = $(if ($total -gt 0) { [int](100 * $done / $total) } else { 0 })
                     if($script:UiStatus){$downloadStatus="Downloading DSS installer: $([Math]::Round($done/1MB,1)) MB";if($total -gt 0){$downloadStatus+=" / $([Math]::Round($total/1MB,1)) MB ($pct%)"};& $script:UiStatus $downloadStatus ('Source: '+$Url)}
-                    Write-Progress -Activity 'Downloading DigitalSignerService 4.1.8 package' -Status ("{0:N1} of {1:N1} MB" -f ($done / 1MB), ($total / 1MB)) -PercentComplete $pct
+                    Write-Progress -Activity ("Downloading DigitalSignerService "+$Cfg.DssVersion+" package") -Status ("{0:N1} of {1:N1} MB" -f ($done / 1MB), ($total / 1MB)) -PercentComplete $pct
                 }
             }
             $out.Close(); $out = $null
             if ($total -gt 0 -and (Get-Item -LiteralPath $part).Length -lt $total) { throw (New-Object IO.IOException('connection closed before the download finished')) }
-            Write-Progress -Activity 'Downloading DigitalSignerService 4.1.8 package' -Completed
+            Write-Progress -Activity ("Downloading DigitalSignerService "+$Cfg.DssVersion+" package") -Completed
             Move-Item -LiteralPath $part -Destination $OutFile -Force
             return @{ Ok = $true; Text = 'downloaded' }
         } catch { Write-DscError $_ 'Caught exception';
@@ -772,14 +802,14 @@ function Export-BatPayload([string]$Bat, [string]$OutZip) {
 function Get-DssPackageFromWeb {
     if (-not $Cfg.AllowDssDownload -or -not $Cfg.PackageUrl) { return $false }
     if (-not (Confirm-DssDownload)) { return $false }
-    $downloadDir=Join-Path (Get-DownloadsFolder) 'DSC-Signer-4.1.8'
+    $downloadDir=Join-Path (Get-DownloadsFolder) ('DSC-Signer-'+$Cfg.DssVersion)
     [void][IO.Directory]::CreateDirectory($downloadDir)
     $sources=@($Cfg.PackageUrl)
     if($Cfg.PackageFallbackUrl -and $Cfg.PackageFallbackUrl -ne $Cfg.PackageUrl){$sources+= $Cfg.PackageFallbackUrl}
     $failures=@();$attempt=0
     foreach($url in $sources){
         $attempt++
-        $zip=Join-Path $downloadDir ('DSS-4.1.8-'+$script:DscSession.SessionId+'-source'+$attempt+'.zip')
+        $zip=Join-Path $downloadDir ('DSS-'+$Cfg.DssVersion+'-'+$script:DscSession.SessionId+'-source'+$attempt+'.zip')
         try {
             Say "      Downloading DSS $($Cfg.DssVersion), source $attempt of $($sources.Count): $url" 'Cyan'
             if($TestMode -and $url -notmatch '^https?:'){Copy-Item -LiteralPath $url -Destination $zip}
@@ -858,7 +888,7 @@ function Get-DssPackageMsi {
         $found=Find-InFolder $destination
         if($found -and $found.Kind -eq 'msi'){$candidate=$found.Path}
     }
-    if(-not $candidate){throw 'No DSS 4.1.8 MSI could be mapped from the package.'}
+    if(-not $candidate){throw "No DSS $($Cfg.DssVersion) MSI could be mapped from the package."}
     $validation=Test-PackageValid $candidate
     if(-not $validation.Ok){throw ('Mapped MSI failed validation: '+$validation.Text)}
     $script:PkgMsi=$candidate
@@ -882,6 +912,7 @@ function Test-PackageValid([string]$p) {
             if (-not $id.IsMsi) { return @{ Ok = $false; Text = "$($id.Name) is not a valid MSI file (damaged or incomplete download?)" } }
             if (-not $id.IsDss) { return @{ Ok = $false; Text = "$($id.Name) is an installer for some other software, not DigitalSignerService" } }
             if ($id.Version -and $id.Version -ne $ver) { return @{ Ok = $false; Text = "$($id.Name) is DigitalSignerService $($id.Version) - version $ver is needed" } }
+            if($Cfg.DssVersion -eq '7.0.2'){Assert-AparMsiIdentity $p}
             return @{ Ok = $true; Text = "VALID - $($id.Name)  (DigitalSignerService $ver, $($id.SizeMB) MB)  in $(Split-Path -Parent (Resolve-Path -LiteralPath $p).ProviderPath)"; Path = $p }
         }
         $x = Test-PackagePath $p
@@ -895,6 +926,62 @@ function Test-PackageValid([string]$p) {
         Log "validate failed $p : $($_.Exception.Message)"
         return @{ Ok = $false; Text = "Could not check this location: $($_.Exception.Message)" }
     }
+}
+function Get-DssMsiProperties([string]$Path) {
+    $installer=New-Object -ComObject WindowsInstaller.Installer
+    $database=$installer.OpenDatabase($Path,0)
+    $properties=@{}
+    foreach($key in 'ProductName','ProductVersion','ProductCode','UpgradeCode') {
+        $view=$database.OpenView(('SELECT `Value` FROM `Property` WHERE `Property` = '+[char]39+$key+[char]39))
+        try{[void]$view.Execute();$record=$view.Fetch();if($record){$properties[$key]=$record.StringData(1)}}finally{[void]$view.Close()}
+    }
+    return $properties
+}
+function Assert-AparMsiIdentity([string]$Path) {
+    if((Get-DssSha256 $Path) -ne $Cfg.MsiSha256){throw 'APAR MSI SHA256 does not match the inspected 7.0.2 package. Nothing will be installed.'}
+    $signature=Get-AuthenticodeSignature -LiteralPath $Path
+    if($signature.Status -ne 'Valid'){throw 'APAR MSI publisher signature could not be validated.'}
+    $id=Get-DssMsiProperties $Path
+    if($id.ProductName -ne 'Digital Signer Service' -or $id.ProductVersion -ne '7.0.2' -or
+       $id.ProductCode -ne $Cfg.ProductCode -or $id.UpgradeCode -ne $Cfg.UpgradeCode){throw 'Unexpected APAR MSI product identity.'}
+}
+function Get-DssMsiRelatedVersions([string]$Path) {
+    $installer=New-Object -ComObject WindowsInstaller.Installer
+    $database=$installer.OpenDatabase($Path,0)
+    $view=$database.OpenView('SELECT `UpgradeCode` FROM `Upgrade`')
+    try {
+        [void]$view.Execute()
+        while($record=$view.Fetch()) {
+            foreach($product in $installer.RelatedProducts($record.StringData(1))) {
+                $installer.ProductInfo($product,'VersionString')
+            }
+        }
+    } finally {[void]$view.Close()}
+}
+function Assert-DssMsiCoexistence([string]$Path) {
+    foreach($version in @(Get-DssMsiRelatedVersions $Path)){
+        if($version -in '4.1.8','7.0.2' -and $version -ne $Cfg.DssVersion){
+            throw "Installer upgrade rules reference protected DSS $version. Installation blocked to preserve it."
+        }
+    }
+}
+function Get-DssPeerSnapshot {
+    $version=if($Cfg.DssVersion -eq '7.0.2'){'4.1.8'}else{'7.0.2'}
+    $port=if($version -eq '4.1.8'){55101}else{55103}
+    $path="C:\Program Files\Digital Signer Service\$version\Digital Signer Service.exe"
+    $hash=if(Test-Path -LiteralPath $path -PathType Leaf){Get-DssSha256 $path}else{''}
+    $url="https://$($Cfg.SignerHost):$port/check/isLive"
+    $live=[DssfHttpV3]::Get($url,$false,3000)
+    return @{Version=$version;Path=$path;Hash=$hash;Url=$url;WasLive=($live.Ok -and $live.Body -match ('\bsuccess\b.*'+[regex]::Escape($version)))}
+}
+function Assert-DssPeerPreserved($Before) {
+    if($Before.Hash -and (-not (Test-Path -LiteralPath $Before.Path) -or (Get-DssSha256 $Before.Path) -ne $Before.Hash)){
+        throw "The existing DSS $($Before.Version) executable changed or is missing. Review the installer log."
+    }
+    $live=[DssfHttpV3]::Get($Before.Url,$false,3000)
+    $ok=$live.Ok -and $live.Body -match ('\bsuccess\b.*'+[regex]::Escape($Before.Version))
+    Write-DscEvent 'Info' 'Coexisting signer validation' @{Version=$Before.Version;Url=$Before.Url;WasLive=$Before.WasLive;NowLive=[bool]$ok;ExecutablePreserved=[bool]$Before.Hash}
+    if($Before.WasLive -and -not $ok){throw "DSS $($Before.Version) was live before installation but no longer answers correctly. Review both services before continuing."}
 }
 function Get-DefaultPackagePath {
     $src = Find-DssPackageSource
@@ -915,12 +1002,12 @@ function Show-PickPackage([string]$what) {
         if (-not $env:DSSF_GUISTUB) { Add-Type -AssemblyName System.Windows.Forms -ErrorAction Stop }
         if ($what -eq 'folder') {
             $d = New-Object System.Windows.Forms.FolderBrowserDialog
-            $d.Description = 'Select the folder that contains the DigitalSignerService 4.1.8 zip or msi'
+            $d.Description = "Select the folder that contains the DigitalSignerService $($Cfg.DssVersion) zip or msi"
             $d.SelectedPath = (Get-DownloadsFolder)
             if ($d.ShowDialog() -eq 'OK') { return $d.SelectedPath }
         } else {
             $d = New-Object System.Windows.Forms.OpenFileDialog
-            $d.Title = 'Select DigitalSignerService 4.1.8 zip or msi'
+            $d.Title = "Select DigitalSignerService $($Cfg.DssVersion) zip or msi"
             $d.InitialDirectory = (Get-DownloadsFolder)
             $d.Filter = 'DSS installer (*.zip;*.msi)|*.zip;*.msi|All files (*.*)|*.*'
             if ($d.ShowDialog() -eq 'OK') { return $d.FileName }
@@ -1193,7 +1280,21 @@ function Get-InstalledJava {
     }
     return $res
 }
+function Get-AparBundledJava {
+    if($Cfg.DssVersion -ne '7.0.2'){return $null}
+    $root=Split-Path -Parent $Cfg.RequiredDssPath
+    $java=Join-Path $root 'jre64\bin\java.exe'
+    if(Test-Path -LiteralPath $java -PathType Leaf){return $java}
+    return $null
+}
 function Test-JavaLatest {
+    if($Cfg.DssVersion -eq '7.0.2'){
+        $bundled=Get-AparBundledJava
+        if($bundled){$result=Invoke-JavaVersion $bundled;if($result.Code -eq 0 -and $result.Text -match 'version\s+"'){
+            return @{Pass=$true;Value='APAR bundled Java works';Info=@('APAR bundled runtime retained; a system Java update is optional.')}
+        }}
+        return @{Pass=$false;Info=@('APAR bundled Java is missing or failed to start.');Advice='Review APAR installation repair; the E-Office runtime will be preserved.'}
+    }
     # Historical function name retained; this check deliberately does not fetch update metadata.
     $installed = @(Get-InstalledJava)
     $best = $installed | Where-Object { $_.Major -eq 8 -and $_.Is64 } | Sort-Object Update -Descending | Select-Object -First 1
@@ -1203,6 +1304,7 @@ function Test-JavaLatest {
     return @{ Pass = $true; Value = "Java 8 Update $($best.Update) (64-bit) installed"; Info = @('Existing Java retained. Update checks are deferred to the optional indicator.') }
 }
 function Install-JavaLatest($r) {
+    if($Cfg.DssVersion -eq '7.0.2' -and -not $script:OptionalJavaUpdate){Repair-DssInstall $r -ForceRepair;return}
     $lat = Get-JavaLatest
     if ($TestMode) { Invoke-MockJavaInstall $lat.Update; Add-Action $r "Installed Java 8 Update $($lat.Update) (64-bit) silently"; return }
     $done = $false
@@ -1243,8 +1345,8 @@ function Find-JavaOnPath {
     return $null
 }
 function Test-JavaWorks {
-    $exe=Find-JavaOnPath
-    if(-not $exe){return @{Pass=$false;Info=@('Java command not found on PATH.');Kind='nopath';Advice='Select PATH/Java repair if required.'}}
+    $exe=if($Cfg.DssVersion -eq '7.0.2'){Get-AparBundledJava}else{Find-JavaOnPath}
+    if(-not $exe){if($Cfg.DssVersion -eq '7.0.2'){return @{Pass=$false;Info=@('APAR bundled Java is missing.');Kind='dssjre';Advice='Review APAR installation repair.'}};return @{Pass=$false;Info=@('Java command not found on PATH.');Kind='nopath';Advice='Select PATH/Java repair if required.'}}
     $result=Invoke-JavaVersion $exe
     $version='';if($result.Text -match 'version\s+"([^"]+)"'){$version=$matches[1]}
     if($result.Code -ne 0 -or -not $version){return @{Pass=$false;Info=@("java -version failed (exit $($result.Code)): $($result.Text)");Kind='broken';Exe=$exe}}
@@ -1295,11 +1397,13 @@ function Test-Port {
     foreach ($b in $blocked) { $info += "Port $($Cfg.Port) is inside Windows reserved range $($b.Start)-$($b.End) (Hyper-V/WinNAT)" }
     if (-not $lis.Count -and -not $blocked.Count) { $info += "Port $($Cfg.Port) is free" }
     $val = 'free'; if ($lis.Count -and -not $bad.Count) { $val = 'used by Digital Signer Service (correct)' }
-    return @{ Pass = ($bad.Count -eq 0 -and $blocked.Count -eq 0); Info = $info; Value = $val; Bad = $bad; Blocked = $blocked; Advice = 'Uninstall/stop the other software that uses port 55101.' }
+    return @{ Pass = ($bad.Count -eq 0 -and $blocked.Count -eq 0); Info = $info; Value = $val; Bad = $bad; Blocked = $blocked; Advice = "Review the program using port $($Cfg.Port); the other DSS version will be preserved." }
 }
 function Repair-Port($r, $t) {
+    if(@($t.Bad | Where-Object {-not $_.Path -or (Test-IsOtherDssProcess $_) -or $_.Name -match '(?i)java|signer'}).Count){throw 'Port owner is another signer/Java process or cannot be identified. Nothing will be stopped; review the port configuration.'}
     if ($Cfg.KillPortOwners) {
         foreach ($p in $t.Bad) {
+            if(Test-IsOtherDssProcess $p){throw 'The other DSS version owns this port. It will not be stopped; review the port configuration.'}
             if ($p.Service -and -not $TestMode) {
                 foreach ($s in ($p.Service -split ',')) { Stop-Service -Name $s -Force -ErrorAction SilentlyContinue; Set-Service -Name $s -StartupType Manual -ErrorAction SilentlyContinue; Add-Action $r "Stopped service '$s' and set it to Manual (it was holding port $($Cfg.Port))" }
             }
@@ -1307,7 +1411,7 @@ function Repair-Port($r, $t) {
             Add-Action $r "Closed '$($p.Name)' (PID $($p.Id)) that was holding port $($Cfg.Port)"
         }
         Start-Sleep -Seconds 2
-    } else { $r.Advice = 'Close the program using port 55101.' }
+    } else { $r.Advice = "Review the program using port $($Cfg.Port)." }
     if ($t.Blocked.Count) {
         if ($TestMode) { $s = Get-MockState; $s.excludedRanges = @($s.excludedRanges | Where-Object { -not ($Cfg.Port -ge $_.Start -and $Cfg.Port -le $_.End) }) + @([pscustomobject]@{ Start = $Cfg.Port; End = $Cfg.Port; Admin = $true }); Save-MockState $s }
         else {
@@ -1325,8 +1429,8 @@ function Repair-Port($r, $t) {
 # =====================================================================
 function Test-DssInstall {
     $info = @(); $entries = @(Get-DssEntries); $ver = $Cfg.DssVersion
-    $old  = @($entries | Where-Object { "$($_.DisplayVersion) $($_.DisplayName)" -notmatch [regex]::Escape($ver) })
-    $good = @($entries | Where-Object { "$($_.DisplayVersion) $($_.DisplayName)" -match [regex]::Escape($ver) })
+    $old = @($entries | Where-Object { $ver -eq '4.1.8' -and $_.DisplayVersion -match '^4\.' -and $_.DisplayVersion -notmatch '^4\.1\.8(\.|$)' })
+    $good = @($entries | Where-Object { "$($_.DisplayVersion) $($_.DisplayName)" -match ('(?<![\d.])'+[regex]::Escape($ver)+'(?![\d.])') })
     $std = Get-DssStdExe; $exe = $null; $installed = $false; $where = ''
     if ($std) {
         # 1) the standard install path decides first
@@ -1367,8 +1471,11 @@ function Repair-DssInstall($r, $t, [switch]$ForceRepair) {
     if (-not $msi) { throw "No approved, validated $($Cfg.DssVersion) installer is ready. A declined or failed download leaves DSS unchanged; no stop or uninstall was started." }
     $valid = Test-PackageValid $msi
     if (-not $valid.Ok) { throw "Replacement installer rejected: $($valid.Text). DSS was not stopped or uninstalled." }
+    if(@($t.Old | Where-Object {"$($_.DisplayVersion) $($_.DisplayName)" -match '(?<![\d.])(4\.1\.8|7\.0\.2)(?![\d.])'}).Count){throw 'Refusing a stale uninstall plan that contains a supported DSS version.'}
+    if(-not $TestMode){Assert-DssMsiCoexistence $msi;$peer=Get-DssPeerSnapshot}
     Stop-Dss $r
     foreach ($o in $t.Old) {
+        if("$($o.DisplayVersion) $($o.DisplayName)" -match '(?<![\d.])(4\.1\.8|7\.0\.2)(?![\d.])'){throw 'Refusing to uninstall a protected coexisting DSS version.'}
         if ($o.UninstallString -notmatch '\{[0-9A-Fa-f\-]{36}\}') { throw "Cannot safely uninstall '$($o.DisplayName)'; use Control Panel, then retry." }
         $g = $matches[0]
         if ($TestMode) { Invoke-MockUninstall $o.DisplayName; $c = 0 }
@@ -1380,17 +1487,20 @@ function Repair-DssInstall($r, $t, [switch]$ForceRepair) {
     # The pre-uninstall snapshot may contain a path that no longer exists.
     $t = Test-DssInstall
     $log = Join-Path $RunDir 'dss-install.log'
+    $installProperties=''
+    if($Cfg.DssVersion -eq '7.0.2'){$installProperties=' APPDIR="'+(Split-Path -Parent $Cfg.RequiredDssPath)+'" REBOOT=ReallySuppress AI_UPGRADE=No'}
     if (($t.Good.Count -or $t.Exe) -and ($ForceRepair -or -not $t.Exe)) {
         if ($TestMode) { Invoke-MockDssInstall; $c = 0 }
-        else { $c = Invoke-Exe 'msiexec.exe' ("/fa `"$msi`" /qn /norestart /l*v `"$log`"") }
+        else { $c = Invoke-Exe 'msiexec.exe' ("/fa `"$msi`" /qn /norestart$installProperties /l*v `"$log`"") }
         if ($c -notin 0,3010,1641) { throw "DSS repair failed (exit $c). See dss-install.log." }
         Add-Action $r "Repaired program files (exit $c)"
     } elseif (-not $t.Exe) {
         if ($TestMode) { Invoke-MockDssInstall; $c = 0 }
-        else { $c = Invoke-Exe 'msiexec.exe' ("/i `"$msi`" /qn /norestart ALLUSERS=1 /l*v `"$log`"") }
+        else { $c = Invoke-Exe 'msiexec.exe' ("/i `"$msi`" /qn /norestart ALLUSERS=1$installProperties /l*v `"$log`"") }
         if ($c -notin 0,3010,1641) { throw "DSS installation failed (exit $c). See dss-install.log." }
         Add-Action $r "Installed DigitalSignerService $($Cfg.DssVersion) (exit $c)"
     }
+    if(-not $TestMode){Assert-DssPeerPreserved $peer}
     if ($c -in 3010,1641) { $r.Advice = 'Installer requires a Windows restart. Restart, then run checks again.' }
 }
 
@@ -1466,7 +1576,7 @@ function Invoke-StartupSequence([switch]$OpenBrowser, [switch]$FullCheck) {
     $script:DiagnosticsOnly=$true; $script:ReviewApproved=$false
     if($script:UiProgress){& $script:UiProgress 'begin-checks' $null @($Defs).Count}
     # Read-only checks and package preparation first; selected repairs happen afterwards.
-    Say ''; Say 'STEP 1 - Open isLive and check success for DigitalSignerService 4.1.8.' 'White'
+    Say ''; Say "STEP 1 - Open isLive and check success for DigitalSignerService $($Cfg.DssVersion)." 'White'
     $opened = $false
     if ($OpenBrowser) { $opened = Open-StartupBrowser }
     Invoke-AllTests @(4)
@@ -1480,7 +1590,7 @@ function Invoke-StartupSequence([switch]$OpenBrowser, [switch]$FullCheck) {
     Say ''; Say 'STEP 4 - Check Java execution, then installed Java. No update prompt.' 'White'
     Invoke-AllTests @(7)
     Invoke-AllTests @(1)
-    Say ''; Say 'STEP 5 - Check port 55101 and its listener.' 'White'
+    Say ''; Say "STEP 5 - Check port $($Cfg.Port) and its listener." 'White'
     Invoke-AllTests @(2)
     Say ''; Say 'STEP 6 - Prepare and automatically validate an installer only if needed.' 'White'
     [void](Prepare-DscInstaller)
@@ -1506,14 +1616,21 @@ function Test-IsLive {
         return @{ Pass=$true; CertificateTrusted=$true; Value=$text; Info=@($text,'HTTPS certificate trusted.') }
     }
     $kind='down';$information=@()
-    if ($response.Ok) { $kind='version';$information += 'The expected success response for DSS 4.1.8 was not received.' }
+    if ($response.Ok) { $kind='version';$information += "The expected success response for DSS $($Cfg.DssVersion) was not received." }
     elseif ($response.Kind -match 'TrustFailure|SecureChannelFailure' -or ($response.SslErrors -and $response.SslErrors -ne 'None')) { $kind='cert';$information += Get-CertReason $response.CertRaw $response.SslErrors }
     else { $information += "isLive not reachable: $($response.Kind) $($response.Error)" }
     return @{Pass=$false;Kind=$kind;Info=$information;FailValue=$information[0];Procs=@();Advice='Continue the ordered diagnostics. Only a date-expiry-only alert for the signer endpoint is accepted; other certificate errors need review.'}
 }
 function Stop-Dss($r) {
     $ps = @(Get-DssProcesses)
-    foreach ($p in $ps) { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue }
+    foreach ($p in $ps) {
+        if(-not $TestMode){
+            $current=Get-Process -Id $p.Id -ErrorAction SilentlyContinue
+            if(-not $current){continue}
+            if(-not (Test-IsDssProcess ([pscustomobject]@{Path=$current.Path;Name=$current.ProcessName}))){throw 'Signer process identity changed; refusing to stop it.'}
+        }
+        Stop-Process -Id $p.Id -Force -ErrorAction Stop
+    }
     if ($ps.Count -and $r) { Add-Action $r "Stopped running Signer Service (PID $(($ps | ForEach-Object { $_.Id }) -join ','))" }
     if ($ps.Count) { Start-Sleep -Seconds 2 }
 }
@@ -1530,7 +1647,7 @@ function Start-DssAdmin($r) {
     while ((Get-Date) -lt $deadline) {
         for($tick=0;$tick -lt 20;$tick++){Start-Sleep -Milliseconds 100;Update-Ui}
         $x = [DssfHttpV3]::Get($Cfg.IsLiveUrl, $false, 3000)
-        if ($x.Ok) { return $true }
+        if ($x.Ok -and (Test-DscLiveResponse $x.Body)) { return $true }
     }
     $r.Advice=$promptHelp
     Add-Action $r "Service did not answer within $($Cfg.StartWaitSeconds) s. Check for a pending Windows/Java prompt, then run the check again."
@@ -1552,7 +1669,7 @@ function Set-DssRunAsAdmin($r) {
         if ($Cfg.CreateAutoStartTask) {
             try {
                 $user = (Get-CimInstance Win32_ComputerSystem).UserName; if (-not $user) { $user = "$env:USERDOMAIN\$env:USERNAME" }
-                $tn = 'DSC Signer Service (Run as Admin)'
+                $tn = $(if($Cfg.DssVersion -eq '4.1.8'){'DSC Signer Service (Run as Admin)'}else{'APAR Signer Service 7.0.2 (Run as Admin)'})
                 if (-not (Get-ScheduledTask -TaskName $tn -ErrorAction SilentlyContinue)) {
                     $a = New-ScheduledTaskAction -Execute $exe -WorkingDirectory (Split-Path -Parent $exe)
                     $tr = New-ScheduledTaskTrigger -AtLogOn -User $user
@@ -1878,7 +1995,7 @@ function Write-Report {
     $url = $Cfg.IsLiveUrl; $ver = $Cfg.DssVersion
     $html = @"
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>DSC Signer Check | Build 2026.11.04.2</title>
+<title>DSC Signer Check | Build 2026.11.11.1</title>
 <style>
 :root{--bg:#f4f6f9;--card:#fff;--ink:#16202c;--mute:#5d6b7a;--ok:#13804a;--okbg:#e6f6ed;--fx:#0b6aa6;--fxbg:#e5f1fa;--wn:#9a6400;--wnbg:#fdf3e1;--bd:#c62828;--bdbg:#fdeaea;--line:#e2e7ee}
 @media (prefers-color-scheme:dark){:root{--bg:#0f141a;--card:#18202a;--ink:#e8edf3;--mute:#9aa8b6;--okbg:#123222;--fxbg:#10283a;--wnbg:#33280f;--bdbg:#3a1616;--line:#26313d;--ok:#4cc38a;--fx:#5fb3ec;--wn:#e3b04b;--bd:#ff6b6b}}
@@ -1907,7 +2024,7 @@ ul{margin:8px 0 0;padding-left:20px}li{margin:2px 0}.det{color:var(--mute)}.lbl{
 .act li{color:var(--fx)}.adv{margin-top:10px;background:var(--bdbg);border-radius:8px;padding:8px 12px}
 footer{color:var(--mute);font-size:13px;margin-top:20px}
 </style></head><body><div class="wrap">
-<header><h1>Digital Signing Service 4.1.8 Troubleshooter ( for E-Office )</h1><div class="m">$($Cfg.EditionName) | Build 2026.11.04.2<br>$machine</div></header>
+<header><h1>$([Net.WebUtility]::HtmlEncode($Cfg.EditionName))</h1><div class="m">$($Cfg.EditionName) | Build 2026.11.11.1<br>$machine</div></header>
 <div class="banner $bcls"><div class="mark">$(if($failed -eq 0 -and -not $warns){'&#10004;'}else{'&#9888;'})</div><div><div class="big">$banner</div><div class="sub">$bsub</div></div></div>
 <div class="live"><div class="row"><b>Live browser test:</b><span id="lv">checking&#8230;</span><button onclick="chk()">Test again</button></div>
 <div class="m" style="margin-top:6px"><code>$url</code> &#8212; <a href="$url" target="_blank">open in new tab</a></div></div>
@@ -1952,7 +2069,8 @@ function Invoke-OptionalJavaUpdate([switch]$Confirmed) {
     if (-not $Confirmed -or -not $script:JavaUpdateOffer.Available) { return $false }
     if (-not $IsAdmin) { Say 'Open an Administrator PowerShell session, run this tool again and choose Update Java.' 'Yellow'; return $false }
     Write-DscEvent 'Info' 'Optional Java update selected' @{}
-    Install-JavaLatest $ByNo[1].R
+    $script:OptionalJavaUpdate=$true
+    try{Install-JavaLatest $ByNo[1].R}finally{$script:OptionalJavaUpdate=$false}
     $script:JavaLatest = $null
     return $true
 }
@@ -1982,7 +2100,7 @@ function Prepare-DscInstaller {
 }
 
 function Show-SignerCertificateHelp([switch]$UseGui) {
-    $url = 'https://eoffsigner.eoffice.gov.in:55101/check/isLive'
+    $url = $Cfg.IsLiveUrl
     $text = "For this signer address only: $url`r`nIf the browser offers Advanced, choose Proceed or Add Exception for this address. This is the pre-approved signer exception.`r`nIf the browser does not offer that action, follow your IT administrator's instructions. No global browser certificate policy is changed."
     if ($UseGui) {
         Start-Process -FilePath $url -ErrorAction Stop
@@ -2050,10 +2168,10 @@ function Request-ConsoleReview($Fixable) {
 
 function Read-DssDownloadApproval([string]$Message) {
     if($Mode -eq 'gui') {
-        return ([Windows.Forms.MessageBox]::Show($script:G.Form,$Message,'DSS 4.1.8 - permission to continue',[Windows.Forms.MessageBoxButtons]::YesNo,[Windows.Forms.MessageBoxIcon]::Question,[Windows.Forms.MessageBoxDefaultButton]::Button2) -eq 'Yes')
+        return ([Windows.Forms.MessageBox]::Show($script:G.Form,$Message,("DSS "+$Cfg.DssVersion+" - permission to continue"),[Windows.Forms.MessageBoxButtons]::YesNo,[Windows.Forms.MessageBoxIcon]::Question,[Windows.Forms.MessageBoxDefaultButton]::Button2) -eq 'Yes')
     }
     Say $Message 'Yellow'
-    return ((Ask '   Download DSS 4.1.8 now? [Y/N] : ' @('Y','N') 'N') -eq 'Y')
+    return ((Ask "   Download DSS $($Cfg.DssVersion) now? [Y/N] : " @('Y','N') 'N') -eq 'Y')
 }
 function Get-DssSha256([string]$LiteralPath) {
     $hash=[Security.Cryptography.SHA256]::Create()
@@ -2086,7 +2204,7 @@ function Start-DssInstallRequest {
         $script:DssPackageFailure='Installer downloads are disabled. No installation was started.'
         return $false
     }
-    $message = "Download and install DigitalSignerService $($Cfg.DssVersion), then continue checks?`r`n`r`nSource: $($Cfg.PackageUrl)`r`nFallback: $($Cfg.PackageFallbackUrl)`r`nThe tool will reuse a validated package or download it to Downloads, validate and map the MSI, stop DSS if necessary, remove older DSS versions if present, and install silently. No other repairs are included. A restart may be required.`r`n`r`nChoose Yes to apply these changes now, or No to leave the installation unchanged."
+    $message = "Download and install DigitalSignerService $($Cfg.DssVersion), then continue checks?`r`n`r`nSource: $($Cfg.PackageUrl)`r`nFallback: $($Cfg.PackageFallbackUrl)`r`nThe tool will reuse a validated package or download it to Downloads, validate and map the MSI, stop DSS if necessary, preserve DSS 4.1.8 and 7.0.2 side by side; remove legacy versions only in the 4.1.8 workflow, and install silently. No other repairs are included. A restart may be required.`r`n`r`nChoose Yes to apply these changes now, or No to leave the installation unchanged."
     if (-not (Read-DssDownloadApproval $message)) {
         $script:DssInstallOutcome='Declined'
         Write-DscEvent 'Info' 'DSS install and continue declined' @{}
@@ -2106,12 +2224,12 @@ function Start-DssInstallRequest {
         $before=Test-DssInstall
         if ($before.Pass -and -not $before.Warn) {
             $script:DssInstallOutcome='AlreadyInstalled'
-            Say 'DSS 4.1.8 is already installed correctly; continuing checks without reinstalling.' 'Green'
+            Say "DSS $($Cfg.DssVersion) is already installed correctly; continuing checks without reinstalling." 'Green'
             return $true
         }
         Repair-DssInstall $definition.R $before
         $after=Test-DssInstall
-        if (-not $after.Pass) { throw 'The installer finished but DSS 4.1.8 installation validation did not pass. See dss-install.log and the installation row.' }
+        if (-not $after.Pass) { throw "The installer finished but DSS $($Cfg.DssVersion) installation validation did not pass. See dss-install.log and the installation row." }
         $definition.Fixed=$true
         if($script:UiProgress){& $script:UiProgress 'repaired' $definition 0}
         $script:DssInstallOutcome='Installed'
@@ -2180,7 +2298,7 @@ function Expand-DssArchive([string]$LiteralPath,[string]$DestinationPath,[switch
 
 $Defs = @(
     @{ No = 4;  Title = 'Signer Service running, isLive success';   T = { Test-IsLive };      F = { param($r, $t) Repair-IsLive $r $t };       Plan = 'Install eOffice root certificate, start Signer Service as administrator, auto-start at logon' },
-    @{ No = 3;  Title = "DigitalSignerService $($Cfg.DssVersion) installed properly"; T = { Test-DssInstall }; F = { param($r, $t) Repair-DssInstall $r $t }; Plan = "Remove old Signer Service, install $($Cfg.DssVersion) silently (built-in / chosen / nearby installer)" },
+    @{ No = 3;  Title = "DigitalSignerService $($Cfg.DssVersion) installed properly"; T = { Test-DssInstall }; F = { param($r, $t) Repair-DssInstall $r $t }; Plan = "Preserve the other supported DSS version; install/repair $($Cfg.DssVersion) silently (built-in / chosen / nearby installer)" },
     @{ No = 5;  Title = 'Clean PATH: no stale Java / JAVA_TOOL_OPTIONS';     T = { Test-EnvVars };     F = { param($r, $t) Repair-EnvVars $r $t };      Plan = 'Remove stale Java PATH entries, bad JAVA_HOME, JAVA_TOOL_OPTIONS; restore missing Windows PATH folders (backup kept)' },
     @{ No = 7;  Title = 'Java works properly';                               T = { Test-JavaWorks };   F = { param($r, $t) Repair-JavaWorks $r $t };    Plan = 'Put the latest Java first on PATH / reinstall Java' },
     @{ No = 1;  Title = 'Suitable Java Runtime installed';                     T = { Test-JavaLatest };  F = { param($r, $t) Install-JavaLatest $r };       Plan = 'Keep suitable installed Java; install suitable Java only when absent. Updating working Java is an optional separate action.' },
@@ -2342,8 +2460,8 @@ function Show-Fixable($list) {
 function Start-Console {
     if (-not $TestMode) { Clear-Host }
     Say '=================================================================' 'White'
-    Say ("$($Cfg.EditionName) | Build 2026.11.04.2") 'White'
-    Say "  Digital Signing Service 4.1.8 Troubleshooter ( for E-Office )$(if($CheckOnly){'   [CHECK ONLY]'})$(if($TestMode){'   [TEST MODE]'})" 'White'
+    Say ("$($Cfg.EditionName) | Build 2026.11.11.1") 'White'
+    Say "  $($Cfg.EditionName)$(if($CheckOnly){'   [CHECK ONLY]'})$(if($TestMode){'   [TEST MODE]'})" 'White'
     Say "  Running as: $(if($IsAdmin){'Administrator'}else{'normal user (reopen PowerShell as Administrator for repairs)'})" 'Gray'
     Say '=================================================================' 'White'
     $handFix = @(); if ($script:Handoff) { $handFix = @($script:Handoff.fix | ForEach-Object { [int]$_ }) }
@@ -2434,7 +2552,7 @@ function Start-Gui {
     }
     $font = (New-UiFont 'Segoe UI' 9.5)
     $f = New-Object Windows.Forms.Form
-    $f.Text = "$($Cfg.EditionName) | Build 2026.11.04.2 | DSS $($Cfg.DssVersion)"
+    $f.Text = "$($Cfg.EditionName) | Build 2026.11.11.1 | DSS $($Cfg.DssVersion)"
     $f.Size = New-Object Drawing.Size(1100, 760); $f.MinimumSize = New-Object Drawing.Size(900, 600)
     $f.TopMost=$true
     $f.StartPosition = 'CenterScreen'; $f.Font = $font; $f.BackColor = [Drawing.Color]::White
@@ -2442,7 +2560,7 @@ function Start-Gui {
 
     # header
     $hdr = New-Object Windows.Forms.Panel; $hdr.Dock = 'Top'; $hdr.Height = 74; $hdr.BackColor = $C.Navy
-    $t1 = New-Object Windows.Forms.Label; $t1.UseMnemonic = $false; $t1.Text = 'Digital Signing Service 4.1.8 Troubleshooter ( for E-Office )'; $t1.ForeColor = [Drawing.Color]::White
+    $t1 = New-Object Windows.Forms.Label; $t1.UseMnemonic = $false; $t1.Text = $Cfg.EditionName; $t1.ForeColor = [Drawing.Color]::White
     $t1.Font = (New-UiFont 'Segoe UI Semibold' 13); $t1.AutoSize = $true; $t1.Location = New-Object Drawing.Point(16, 8)
     $t2 = New-Object Windows.Forms.Label; $t2.ForeColor = [Drawing.Color]::FromArgb(200, 220, 235); $t2.AutoSize = $true; $t2.Location = New-Object Drawing.Point(18, 44)
     $t2.Text = "isLive, installation path, PATH, Java, port, installer preparation and remaining checks   |   $([Environment]::MachineName)   |   $(if ($IsAdmin) { 'Administrator' } else { 'normal user' })"
@@ -2579,11 +2697,11 @@ function Start-Gui {
     function Get-GuiWorkTarget([int]$No) {
         switch($No){
             4 {return $Cfg.IsLiveUrl}
-            3 {return 'C:\Program Files\Digital Signer Service\4.1.8\Digital Signer Service.exe / validated DSS installer'}
+            3 {return ($Cfg.RequiredDssPath+' / validated DSS installer')}
             5 {return 'Windows PATH, JAVA_HOME and Java option variables'}
             7 {return 'java.exe execution and version response'}
             1 {return 'Installed Java 8 / 64-bit runtime'}
-            2 {return 'Local TCP port 55101 and its listener process'}
+            2 {return ('Local TCP port '+$Cfg.Port+' and its listener process')}
             6 {return ($env:SystemRoot+'\System32\drivers\etc\hosts -> 127.0.0.1 eoffsigner.eoffice.gov.in')}
             8 {return 'Chrome -> signer isLive HTTPS endpoint'}
             9 {return 'Edge -> signer isLive HTTPS endpoint'}
@@ -2667,7 +2785,7 @@ function Start-Gui {
         $findings=Get-DscFindingsSummary
         $G.Findings.Text=$findings.Text
         $G.Findings.ForeColor=$(if($findings.Failures){$C.Bad}elseif($findings.Warnings){$C.Warn}else{$C.Ok})
-        $G.Sub.Text='Diagnostics only. Review / Pending fixes when ready; no repair has been applied automatically.' 
+        $G.Sub.Text='Diagnostics only. Review / Pending fixes when ready; no repair has been applied automatically.'
         $G.Stat.Text="Signer service: $($state.Title) | Other checks: $($findings.Failures) issues, $($findings.Warnings) warnings"
         $G.BFix.Enabled = ($fx.Count -gt 0)
         $miss = [bool]($ByNo[3].Tested -and $ByNo[3].R.Status -in 'FAIL', 'SKIP' -and $ByNo[3].Last.NotInstalled -and -not (Find-DssPackageSource))
@@ -2970,15 +3088,15 @@ function Get-DscBrowserSetupDefinition([string]$Browser) {
 function New-DscBookmarkImportFile([switch]$Confirmed) {
     if(-not $Confirmed){throw 'Bookmark file creation requires approval.'}
     $file=Join-Path $RunDir 'DSC-isLive-bookmark.html'
-    $html=@'
+    $html=@"
 <!DOCTYPE NETSCAPE-Bookmark-file-1>
 <META HTTP-EQUIV="Content-Type" CONTENT="text/html; charset=UTF-8">
 <TITLE>DSC islive Check</TITLE>
 <H1>DSC islive Check</H1>
 <DL><p>
-<DT><A HREF="https://eoffsigner.eoffice.gov.in:55101/check/isLive">DSC islive Check</A>
+<DT><A HREF="$($Cfg.IsLiveUrl)">DSC islive Check</A>
 </DL><p>
-'@
+"@
     [IO.File]::WriteAllText($file,$html,(New-Object Text.UTF8Encoding $false))
     return $file
 }
@@ -2991,7 +3109,7 @@ function Get-DscBrowserSetupInstructions([string]$Browser,[switch]$Bookmark,[swi
     if($Startup){
         $lines+=@('STARTUP PAGE:',$(switch($Browser){'Chrome' {'On startup > Open a specific page or set of pages > Add a new page.'};'Edge' {'When Edge starts > Open these pages > Add a new page.'};'Firefox' {'Home > Homepage and new windows > Custom URLs. Add the DSC URL to the existing homepage list, separated by |.'}}),'Keep all existing URLs. If you use Restore previous session, review that choice before switching startup mode. If your organization manages this setting, ask IT; do not replace its policy.','')
     }
-    $lines+=@('URL: https://eoffsigner.eoffice.gov.in:55101/check/isLive','The signer must be running before the startup page can succeed. Certificate expiry warnings are not removed by a bookmark or startup entry.','Continue opens the selected browser pages. You complete and confirm the changes in the browser; opening settings is not proof that they were saved.')
+    $lines+=@(("URL: "+$Cfg.IsLiveUrl),'The signer must be running before the startup page can succeed. Certificate expiry warnings are not removed by a bookmark or startup entry.','Continue opens the selected browser pages. You complete and confirm the changes in the browser; opening settings is not proof that they were saved.')
     return ($lines -join "`r`n")
 }
 function Open-DscBrowserAdditionalSettings([string[]]$Browsers,[switch]$Bookmark,[switch]$Startup,[switch]$Confirmed) {
@@ -3005,7 +3123,7 @@ function Open-DscBrowserAdditionalSettings([string[]]$Browsers,[switch]$Bookmark
         $message=Get-DscBrowserSetupInstructions $name -Bookmark:$Bookmark -Startup:$Startup -ImportFile $importFile
         if(-not (Confirm-DscBrowserSetup $message "$name - bookmark / startup")){Write-DscEvent 'Info' 'Browser additional setup cancelled' @{Browser=$name};continue}
         try{
-            $targets=@();if($Bookmark){$targets+='https://eoffsigner.eoffice.gov.in:55101/check/isLive'};if($Startup){$targets+=$definition.Startup}
+            $targets=@();if($Bookmark){$targets+=$Cfg.IsLiveUrl};if($Startup){$targets+=$definition.Startup}
             foreach($target in $targets){if(-not $TestMode){Start-Process -FilePath $browser.Exe -ArgumentList $target -ErrorAction Stop|Out-Null}}
             Write-DscEvent 'Info' 'Bookmark/startup setup opened; completion pending user action' @{Browser=$name;Bookmark=[bool]$Bookmark;Startup=[bool]$Startup;ImportFile=$importFile}
         }catch{Write-DscError $_ ("Open $name additional settings")}
@@ -3023,7 +3141,7 @@ function Show-DscBrowserAdditionalSettings($Owner) {
     $options=New-Object Windows.Forms.FlowLayoutPanel;$options.Dock='Fill';$options.FlowDirection='TopDown'
     $bookmark=New-Object Windows.Forms.CheckBox;$bookmark.Text='Add bookmark: DSC islive Check (guided / import HTML)';$bookmark.AutoSize=$true
     $startup=New-Object Windows.Forms.CheckBox;$startup.Text='Add isLive to startup pages (guided; keep your existing pages)';$startup.AutoSize=$true;$options.Controls.AddRange(@($bookmark,$startup));$layout.Controls.Add($options,0,2)
-    $url=New-Object Windows.Forms.TextBox;$url.ReadOnly=$true;$url.Text='https://eoffsigner.eoffice.gov.in:55101/check/isLive';$url.Dock='Fill';$layout.Controls.Add($url,0,3)
+    $url=New-Object Windows.Forms.TextBox;$url.ReadOnly=$true;$url.Text=$Cfg.IsLiveUrl;$url.Dock='Fill';$layout.Controls.Add($url,0,3)
     $copy=New-Object Windows.Forms.Button;$copy.Text='Copy isLive URL';$copy.AutoSize=$true;$layout.Controls.Add($copy,0,4)
     $notes=New-Object Windows.Forms.TextBox;$notes.Multiline=$true;$notes.ReadOnly=$true;$notes.ScrollBars='Vertical';$notes.Dock='Fill';$notes.Text="Bookmark name: DSC islive Check`r`n`r`nChrome/Edge: keep existing startup URLs when adding the DSC URL.`r`nFirefox: keep existing homepage URLs, adding the DSC URL with a | separator.`r`n`r`nA bookmark import file is prepared only after Continue. The script does not edit browser databases or force a managed policy. Settings remain pending until saved in the browser.`r`n`r`nThe signer must already be running. This does not bypass certificate warnings.";$layout.Controls.Add($notes,0,5)
     $buttons=New-Object Windows.Forms.FlowLayoutPanel;$buttons.Dock='Fill';$buttons.FlowDirection='RightToLeft'
@@ -3035,7 +3153,7 @@ function Show-DscBrowserAdditionalSettings($Owner) {
         $old=$script:OtherUi;$script:OtherUi=@{Form=$script:DscBrowserDialog.Form}
         try{return (Show-OtherContinueDialog $Message $Title)}finally{$script:OtherUi=$old}
     }
-    $copy.Add_Click({Set-Clipboard -Value 'https://eoffsigner.eoffice.gov.in:55101/check/isLive'})
+    $copy.Add_Click({Set-Clipboard -Value $Cfg.IsLiveUrl})
     $continue.Add_Click({
         $state=$script:DscBrowserDialog
         $selected=@('Chrome','Edge','Firefox'|Where-Object{$state.Boxes[$_].Checked})
@@ -3721,7 +3839,7 @@ function Show-DscMenu {
     Write-Host ''
     Write-Host $rule -ForegroundColor Cyan
     Write-MenuRow 'Digital Signing Service 4.1.8 Troubleshooter ( for E-Office )' Yellow -Bold
-    Write-MenuRow 'Native PowerShell | Build 2026.11.04.2' White
+    Write-MenuRow 'Native PowerShell | Build 2026.11.11.1' White
     Write-MenuRow
     Write-MenuRow 'Developed by Girish Tiwari' Gray
     Write-MenuRow 'Senior Information Technology, Certified Microsoft Engineer' Gray
@@ -3737,7 +3855,9 @@ function Show-DscMenu {
     Write-MenuRow
     Write-MenuRow 'Option 5. CRIS Signer Switcher & Installer' Cyan
     Write-MenuRow
-    Write-MenuRow 'Option 6. Exit' Gray
+    Write-MenuRow 'Option 6. APAR Signer Service 7.0.2 Troubleshooter (GUI)' Cyan
+    Write-MenuRow
+    Write-MenuRow 'Option 7. Exit' Gray
     Write-MenuRow
     Write-Host $rule -ForegroundColor Cyan
     Write-MenuRow 'Checks run first. Review and select repairs before applying.' White
@@ -3750,17 +3870,18 @@ function Show-DscMenu {
 if ($Mode -ne 'menu') { Invoke-DscSelection $Mode; return }
 while ($true) {
     Show-DscMenu
-    $menuInstruction = 'Select any one option to proceed further (1-6):'
+    $menuInstruction = 'Select any one option to proceed further (1-7):'
     Write-Host $menuInstruction -ForegroundColor Black -BackgroundColor Yellow
-    $choice = Read-Host 'Choose 1-6'
+    $choice = Read-Host 'Choose 1-7'
     switch ($choice) {
         '1' { Invoke-DscSelection 'console' }
         '2' { Invoke-DscSelection 'gui' }
         '3' { Invoke-DscSelection 'othergui' }
         '4' { continue }
         '5' { Invoke-DscSelection 'crisgui' }
-        '6' { return }
-        default { Write-Host 'Enter a number from 1 to 6.' -ForegroundColor Yellow }
+        '6' { Invoke-DscSelection 'apargui' }
+        '7' { return }
+        default { Write-Host 'Enter a number from 1 to 7.' -ForegroundColor Yellow }
     }
 }
 } catch {
